@@ -22,3 +22,8 @@ models/
 
 # Dotenv
 .env
+
+# MS Office temp/lock files
+~$*
+~*.tmp
+*.tmp
