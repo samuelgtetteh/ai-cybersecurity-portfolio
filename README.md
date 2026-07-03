@@ -140,6 +140,5 @@ To reproduce any notebook result, open the notebook in Jupyter and run **Kernel 
 ## Git Remotes
 
 ```bash
-git push origin main   # → github.com/samuelgtetteh/Samuel_Tetteh_Dev
-git push v2 main       # → github.com/samuelgtetteh/Samuel_Tetteh_Dev-V2_Restart
+git push origin main   # → github.com/samuelgtetteh/ai-cybersecurity-portfolio
 ```

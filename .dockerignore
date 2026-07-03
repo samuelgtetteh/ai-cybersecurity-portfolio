@@ -1,0 +1,12 @@
+venv/
+.git/
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+notebooks/
+exhibits/
+demo/
+*.docx
+*.ipynb
+!models/regmap-embedder
+!data/processed/training_pairs.csv
