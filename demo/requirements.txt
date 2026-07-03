@@ -3,3 +3,8 @@ sentence-transformers
 torch
 pandas
 numpy
+matplotlib
+seaborn
+scikit-learn
+joblib
+polars
