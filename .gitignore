@@ -31,3 +31,11 @@ models/
 # Control Advisor generated reports (test output, not source)
 control-advisor/reports/
 control-advisor/scan_report.json
+
+# Docker log snapshots (runtime artifacts, not source)
+docs/logs/*
+!docs/logs/.gitkeep
+!docs/logs/*.ps1
+
+# Claude Code local session state
+.claude/
