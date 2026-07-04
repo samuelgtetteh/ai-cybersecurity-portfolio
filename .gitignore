@@ -27,3 +27,7 @@ models/
 ~$*
 ~*.tmp
 *.tmp
+
+# Control Advisor generated reports (test output, not source)
+control-advisor/reports/
+control-advisor/scan_report.json
