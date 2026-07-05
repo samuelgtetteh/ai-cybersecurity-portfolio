@@ -43,3 +43,6 @@ docs/logs/*
 
 # Claude Code local session state
 .claude/
+
+# Scientific paper draft — kept local, not published to GitHub
+paper/
