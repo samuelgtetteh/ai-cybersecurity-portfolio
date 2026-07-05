@@ -26,8 +26,11 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/identity", tags=["identity"])
 
-MODEL_PATH = Path("../data/processed/isolation_forest_model.pkl")
-SCALER_PATH = Path("../data/processed/scaler.pkl")
+# Anchored to this file's location, not the process CWD, so the model resolves
+# identically whether launched from backend/, the repo root, or inside Docker.
+DATA_PROCESSED = Path(__file__).resolve().parent.parent / "data" / "processed"
+MODEL_PATH = DATA_PROCESSED / "isolation_forest_model.pkl"
+SCALER_PATH = DATA_PROCESSED / "scaler.pkl"
 
 model = joblib.load(MODEL_PATH)
 scaler = joblib.load(SCALER_PATH)

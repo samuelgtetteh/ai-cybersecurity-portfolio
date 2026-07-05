@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sentence_transformers import SentenceTransformer
 import torch
 from pathlib import Path
@@ -18,25 +18,29 @@ app.include_router(ics_router)
 def root():
     return RedirectResponse(url="/docs")
 
-# Load model and HIPAA corpus at startup
-MODEL_PATH = Path('../models/regmap-embedder')
-DATA_FILE = Path('../data/processed/training_pairs.csv')  # or positive_pairs.csv
+# Paths are anchored to this file's location (repo_root/backend/app.py), not the
+# process working directory, so the service resolves its model/data the same way
+# whether launched from backend/, the repo root, or inside the Docker image.
+BASE_DIR = Path(__file__).resolve().parent.parent
+MODEL_PATH = BASE_DIR / 'models' / 'regmap-embedder'
+DATA_FILE = BASE_DIR / 'data' / 'processed' / 'training_pairs.csv'
+FALLBACK_DATA_FILE = BASE_DIR / 'data' / 'processed' / 'positive_pairs.csv'
 
 model = SentenceTransformer(str(MODEL_PATH))
 
-# Load HIPAA texts (same as in your Streamlit app)
+# Load the HIPAA corpus, falling back to positive_pairs.csv only if the primary
+# file is genuinely absent — a narrow FileNotFoundError catch, so a real problem
+# (e.g. a missing 'hipaa_text' column) surfaces instead of being swallowed.
 try:
     df = pd.read_csv(DATA_FILE)
-    hipaa_texts = df['hipaa_text'].dropna().unique().tolist()
-except:
-    # fallback
-    df = pd.read_csv(Path('../data/processed/positive_pairs.csv'))
-    hipaa_texts = df['hipaa_text'].dropna().unique().tolist()
+except FileNotFoundError:
+    df = pd.read_csv(FALLBACK_DATA_FILE)
+hipaa_texts = df['hipaa_text'].dropna().unique().tolist()
 
 corpus_embeddings = model.encode(hipaa_texts, convert_to_tensor=True)
 
 class QueryRequest(BaseModel):
-    nist_control: str
+    nist_control: str = Field(..., max_length=5000)
 
 class MappingResult(BaseModel):
     hipaa_citation: str

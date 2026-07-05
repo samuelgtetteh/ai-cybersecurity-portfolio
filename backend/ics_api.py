@@ -25,7 +25,9 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/ics", tags=["ics"])
 
-DATA_PROCESSED = Path("../data/processed")
+# Anchored to this file's location, not the process CWD, so artifacts resolve
+# identically whether launched from backend/, the repo root, or inside Docker.
+DATA_PROCESSED = Path(__file__).resolve().parent.parent / "data" / "processed"
 
 meta = {}
 for line in (DATA_PROCESSED / "autoencoder_hai_meta.txt").read_text().splitlines():
