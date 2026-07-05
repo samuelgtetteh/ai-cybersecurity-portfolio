@@ -11,7 +11,7 @@ Three end-to-end machine learning prototypes covering compliance automation, ide
 |---------|---------|-------|------------|
 | RegMap – Compliance Mapping | NIST SP 800-53 / HIPAA crosswalk (222 pairs) | Fine-tuned Sentence-BERT | Recall@5 = 0.735 on 34-query test set |
 | Hybrid Identity Anomaly Detection | LANL Auth Logs (2M events) | Isolation Forest | 17,399 anomalies flagged (0.87%) |
-| OT/ICS Intrusion Detection | HAI Turbine/Boiler Testbed (995K samples) | Deep Autoencoder | 84.3% attack recall on 18,303 attacks |
+| OT/ICS Intrusion Detection | HAI Turbine/Boiler Testbed (995K samples) | Deep Autoencoder | ROC AUC 0.929 on 17,527 test attacks |
 
 ---
 
@@ -63,18 +63,23 @@ Unsupervised anomaly detection on 2 million authentication events from the LANL 
 ### 3. OT/ICS Intrusion Detection with Physics-Aware Autoencoder
 **Research Pathway:** Intrusion detection for operational technology and critical infrastructure
 
-A deep autoencoder trained exclusively on normal sensor and actuator readings from the HAI (Hardware-in-the-Loop Augmented ICS) turbine and boiler testbed. The model detects attacks by flagging reconstruction errors above the 95th-percentile threshold — no labeled attack data required during training. Trained on 59 real sensor/actuator tags only (an earlier version of this model inadvertently included the attack-label columns themselves as input features; that data leak has since been fixed by excluding them, and the model was retrained — the numbers below reflect the corrected, leak-free result).
+A deep autoencoder trained exclusively on normal sensor and actuator readings from the HAI (Hardware-in-the-Loop Augmented ICS) turbine and boiler testbed. The model flags attacks by reconstruction error, with no labeled attack data required during training. Trained on 59 real sensor/actuator tags only (an earlier version inadvertently included the attack-label columns themselves as input features; that data leak has since been fixed by excluding them, and the model was retrained).
+
+The model is reported under two evaluation protocols, which together tell an honest story about generalization:
 
 | Metric | Value |
 |--------|-------|
 | Total samples | 995,400 |
 | Sensor features | 59 |
-| Normal training samples | 781,677 |
-| Attack samples (test) | 18,303 |
-| Attack recall | **84.3%** |
-| Attack precision | 0.61 |
-| Detection threshold | 95th percentile of normal errors (MSE = 0.009223) |
 | Model parameters | 36,059 |
+| **ROC AUC** (threshold-independent, canonical test files) | **0.929** |
+| Average precision (canonical) | 0.733 |
+| Random train/test split (optimistic): recall / precision | 84.3% / 0.61 (FPR 5%, base rate 8.6%) |
+| Canonical held-out test files (test1+test2, realistic): recall / precision @ MSE 0.009223 | 87.9% / 0.15 (FPR 20%, base rate 3.9%) |
+| Balanced operating point on canonical (99th pct, MSE 0.060) | recall 72.6%, precision 42.4%, FPR 4.0% |
+| Baselines (canonical) | PCA-reconstruction AUC 0.854; Isolation Forest AUC 0.804 |
+
+> The random-split figures (recall 84.3%, precision 0.61) are from the training notebook, where test-normal is drawn from the same sessions as training. Evaluating on HAI's **designated test files** — which are separate recording sessions — is harder (distribution shift raises the false-positive rate), so the same threshold yields lower precision there. ROC AUC 0.929 is threshold-independent and the headline result. The canonical re-evaluation, baselines, and full threshold-sensitivity analysis are reproducible via [`paper/ot_ics/eval_ot_ics.py`](paper/ot_ics/eval_ot_ics.py).
 
 - **Notebook:** [`notebooks/04_ot_ics_intrusion_detection.ipynb`](notebooks/04_ot_ics_intrusion_detection.ipynb)
 - **Live API:** `POST /ics/score` — scores one sensor reading at a time; `GET /ics/example` returns a real normal reading to try it with (see [Path to Production](#path-to-production-live-api))
