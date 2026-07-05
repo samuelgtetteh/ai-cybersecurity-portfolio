@@ -14,7 +14,8 @@ code it was assigned during training), and the aggregates are replaced with live
 counters that accumulate as real events stream in, in place of the original one-shot
 whole-batch computation.
 """
-from datetime import datetime, timezone
+from collections import defaultdict, deque
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Optional
@@ -58,11 +59,22 @@ ORIENTATION_CODES = {"LogOn": 0, "LogOff": 1, "TGS": 2, "AuthMap": 3, "TGT": 4}
 SUCCESS_CODES = {"Success": 0, "Fail": 1}
 UNKNOWN_CODE = -1
 
-# In-memory rolling state — resets on restart. A production deployment would back this
-# with Redis or similar so counts survive restarts and are shared across replicas.
+# In-memory rolling state — resets on restart. A production deployment would back
+# this with Redis or similar so counts survive restarts and are shared across replicas.
+#
+# Per user we keep only the (timestamp, src_pc) of events within the last hour, so
+# both derived features are a true SLIDING WINDOW: hourly_count is events in the
+# trailing hour and unique_pcs is distinct PCs in that same window. An earlier
+# version keyed hourly_count on (user, hour_of_day 0-23), which silently collided
+# across days and accumulated forever — and its per-user PC set only ever grew,
+# so memory was unbounded. Pruning aged-out entries on each event (plus a periodic
+# sweep for users that never return) fixes both the semantics and the growth.
+WINDOW = timedelta(hours=1)
+_SWEEP_EVERY = 1000  # sweep one-shot users out roughly every N scored events
+
 _lock = Lock()
-_hourly_counts: dict[tuple[str, int], int] = {}
-_user_pcs: dict[str, set] = {}
+_recent_events: dict[str, deque] = defaultdict(deque)
+_event_counter = 0
 
 
 class LoginEvent(BaseModel):
@@ -85,18 +97,29 @@ class AnomalyResult(BaseModel):
 @router.post("/score", response_model=AnomalyResult)
 def score_event(event: LoginEvent) -> AnomalyResult:
     ts = event.timestamp or datetime.now(timezone.utc)
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
     hour = ts.hour
     day_of_week = ts.weekday()
     is_weekend = 1 if day_of_week in (5, 6) else 0
 
+    global _event_counter
     with _lock:
-        key = (event.src_user, hour)
-        _hourly_counts[key] = _hourly_counts.get(key, 0) + 1
-        hourly_count = _hourly_counts[key]
+        cutoff = ts - WINDOW
+        events = _recent_events[event.src_user]
+        events.append((ts, event.src_pc))
+        while events and events[0][0] < cutoff:
+            events.popleft()
+        hourly_count = len(events)
+        unique_pcs = len({pc for _, pc in events})
 
-        pcs = _user_pcs.setdefault(event.src_user, set())
-        pcs.add(event.src_pc)
-        unique_pcs = len(pcs)
+        # Periodically drop users whose most recent event has aged out of the
+        # window, so single-appearance users don't leak memory forever.
+        _event_counter += 1
+        if _event_counter % _SWEEP_EVERY == 0:
+            stale = [u for u, dq in _recent_events.items() if not dq or dq[-1][0] < cutoff]
+            for u in stale:
+                del _recent_events[u]
 
     row = {
         "hour": hour,

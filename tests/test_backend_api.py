@@ -71,6 +71,36 @@ def test_identity_unknown_auth_type_is_anomalous(client):
     assert r.json()["is_anomaly"] is True
 
 
+# --- Identity rolling-window counters ------------------------------------
+
+def test_identity_hourly_count_accumulates_within_window(client):
+    base = {"src_user": "WIN_A@DOM1", "src_pc": "C1", "auth_type": "Kerberos",
+            "logon_type": "Network", "orientation": "LogOn", "success": "Success"}
+    r1 = client.post("/identity/score", json={**base, "timestamp": "2024-03-01T10:00:00Z"})
+    r2 = client.post("/identity/score", json={**base, "timestamp": "2024-03-01T10:15:00Z"})
+    assert r1.json()["hourly_count"] == 1
+    assert r2.json()["hourly_count"] == 2
+
+
+def test_identity_unique_pcs_counts_distinct_within_window(client):
+    base = {"src_user": "WIN_B@DOM1", "auth_type": "Kerberos", "logon_type": "Network",
+            "orientation": "LogOn", "success": "Success"}
+    client.post("/identity/score", json={**base, "src_pc": "C1", "timestamp": "2024-03-01T10:00:00Z"})
+    r = client.post("/identity/score", json={**base, "src_pc": "C2", "timestamp": "2024-03-01T10:10:00Z"})
+    assert r.json()["unique_pcs"] == 2
+
+
+def test_identity_same_hour_different_day_does_not_collide(client):
+    # Regression test for the old (user, hour-of-day) key: two events at 10:00
+    # a full day apart must NOT be counted together. Sliding window ages the
+    # first out, so the second is a fresh count of 1.
+    base = {"src_user": "WIN_C@DOM1", "src_pc": "C1", "auth_type": "Kerberos",
+            "logon_type": "Network", "orientation": "LogOn", "success": "Success"}
+    client.post("/identity/score", json={**base, "timestamp": "2024-03-01T10:00:00Z"})
+    r2 = client.post("/identity/score", json={**base, "timestamp": "2024-03-02T10:00:00Z"})
+    assert r2.json()["hourly_count"] == 1
+
+
 # --- OT/ICS /ics/score ---------------------------------------------------
 
 def test_ics_example_returns_full_reading(client):
