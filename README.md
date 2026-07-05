@@ -1,7 +1,7 @@
 # Cybersecurity ML Research Portfolio
 **Samuel Tetteh** · Independent Research · 2026
 
-Three end-to-end machine learning prototypes covering compliance automation, identity threat detection, and industrial control system security. Each project uses publicly available datasets, open-source tools, and produces fully reproducible results.
+Three end-to-end machine learning prototypes covering compliance automation, identity threat detection, and industrial control system security. Each project uses publicly available datasets, open-source tools, and produces fully reproducible results. All three are also served live via a containerized API, and a fourth tool — Control Advisor — builds on top of them to turn environment scans into prioritized NIST 800-53 control recommendations.
 
 ---
 
@@ -9,7 +9,7 @@ Three end-to-end machine learning prototypes covering compliance automation, ide
 
 | Project | Dataset | Model | Key Metric |
 |---------|---------|-------|------------|
-| RegMap – Compliance Mapping | NIST SP 800-53 / HIPAA crosswalk (222 pairs) | Fine-tuned Sentence-BERT | Recall@5 = 0.74 on 34-query test set |
+| RegMap – Compliance Mapping | NIST SP 800-53 / HIPAA crosswalk (222 pairs) | Fine-tuned Sentence-BERT | Recall@5 = 0.735 on 34-query test set |
 | Hybrid Identity Anomaly Detection | LANL Auth Logs (2M events) | Isolation Forest | 17,399 anomalies flagged (0.87%) |
 | OT/ICS Intrusion Detection | HAI Turbine/Boiler Testbed (995K samples) | Deep Autoencoder | 84.3% attack recall on 18,303 attacks |
 
@@ -54,9 +54,8 @@ Unsupervised anomaly detection on 2 million authentication events from the LANL 
 | Memory footprint | 150 MB (Polars) |
 
 - **Notebook (Polars):** [`notebooks/03b_hybrid_identity_anomaly_polars.ipynb`](notebooks/03b_hybrid_identity_anomaly_polars.ipynb)
-- **Notebook (pandas):** [`notebooks/03_hybrid_identity_anomaly.ipynb`](notebooks/03_hybrid_identity_anomaly.ipynb)
 - **Live API:** `POST /identity/score` — scores one login event at a time, replacing the notebook's batch aggregates with live rolling counters (see [Path to Production](#path-to-production-live-api))
-- **Saved Model:** `data/processed/isolation_forest_model_polars.pkl` (batch notebooks) / `isolation_forest_model.pkl` (live API — see note below)
+- **Saved Model:** `data/processed/isolation_forest_model_polars.pkl` (Polars notebook) / `isolation_forest_model.pkl` (live API — trained by an earlier pandas run whose notebook has since been removed; its saved model and categorical encodings are still what the live API depends on, see note below)
 - **Exhibit:** `exhibits/Exhibit 12_hybrid _indentity.md.docx`
 
 ---
@@ -81,6 +80,19 @@ A deep autoencoder trained exclusively on normal sensor and actuator readings fr
 - **Live API:** `POST /ics/score` — scores one sensor reading at a time; `GET /ics/example` returns a real normal reading to try it with (see [Path to Production](#path-to-production-live-api))
 - **Saved Model:** `data/processed/autoencoder_hai.pth`
 - **Exhibit:** `exhibits/Exhibit 13 OT ICS Intrusion Detection.docx`
+
+---
+
+### 4. Control Advisor – NIST 800-53 Control Recommendation Tool
+**Research Pathway:** AI-assisted security control gap assessment
+
+A CLI tool that scans an environment, has a natural-language conversation to understand context a scan can't infer (regulated data, sector, remote access posture, etc.), and produces a prioritized set of NIST SP 800-53 control recommendations with AI-drafted policy language — without the interview feeling like a rigid form.
+
+- **Scanning:** local/WAN network device discovery (`scanner/network_scan.py`), plus cloud/IaC scanning (`scanner/cloud_scan.py`) against a real AWS account or a LocalStack-simulated one (see [`cloud-target-lab`](#related-repositories) below).
+- **Interview:** free-text answers are interpreted by a small local LLM (Qwen2.5-1.5B-Instruct, via `scanner/llm_interview.py`) rather than requiring exact strings, with a deterministic glossary + confusion-detection fallback (`scanner/interview.py`) for terms the LLM can't reliably explain on its own.
+- **Output:** DOCX and XLSX reports (`scanner/docx_report.py`, `scanner/xlsx_report.py`) with prioritized controls and AI-drafted policy language (`scanner/draft_language.py`), saved to a per-business-name report folder.
+- **Run:** `python control-advisor/cli.py`
+- **Code:** [`control-advisor/`](control-advisor/)
 
 ---
 
@@ -135,6 +147,9 @@ python backend/event_simulator.py --api-url http://localhost:8000
 | Web Demo | Streamlit |
 | Live API | FastAPI, Uvicorn, Docker |
 | Serialization | joblib, safetensors |
+| Local LLM (Control Advisor) | Qwen2.5-1.5B-Instruct via `transformers`, `torch` |
+| Reports (Control Advisor) | `python-docx`, `openpyxl` |
+| Cloud Scanning (Control Advisor) | `boto3`, LocalStack |
 
 ---
 
@@ -142,8 +157,8 @@ python backend/event_simulator.py --api-url http://localhost:8000
 
 ```
 notebooks/
+  01_data_preparation.ipynb             NIST-HIPAA crosswalk cleaning (feeds RegMap)
   02_embedder_training_good.ipynb       RegMap Sentence-BERT training & eval
-  03_hybrid_identity_anomaly.ipynb      LANL identity anomaly (pandas)
   03b_hybrid_identity_anomaly_polars.ipynb  LANL identity anomaly (Polars, 2M rows)
   04_ot_ics_intrusion_detection.ipynb   HAI autoencoder training & eval
 
@@ -158,6 +173,17 @@ backend/
   event_simulator.py                    Simulates live traffic against /map
   Dockerfile                            Builds the full three-model container
   requirements.txt                      Backend dependencies
+
+control-advisor/
+  cli.py                                 Interactive CLI: scan, interview, generate reports
+  scanner/
+    network_scan.py                      Local/WAN network device discovery
+    cloud_scan.py                        AWS/IaC scan (real account or LocalStack)
+    environment_detect.py                Environment/context detection
+    control_mapper.py                    Maps findings to NIST SP 800-53 controls
+    interview.py, llm_interview.py       Natural-language adaptive interview (local LLM)
+    docx_report.py, xlsx_report.py       DOCX/XLSX report generation
+    draft_language.py                    AI-drafted policy language
 
 models/
   regmap-embedder/                      Saved Sentence-BERT weights + eval results
@@ -195,8 +221,23 @@ To reproduce any notebook result, open the notebook in Jupyter and run **Kernel 
 
 ---
 
+## Related Repositories
+
+Two supporting repos exist purely to give the live backend and Control Advisor something realistic to react to, since there's no production deployment or real cloud account behind either:
+
+| Repo | Purpose |
+|------|---------|
+| [`cloud-target-lab`](https://github.com/samuelgtetteh/cloud-target-lab) | LocalStack-simulated AWS account for Control Advisor's cloud/IaC scan phase. |
+| [`live-target-lab`](https://github.com/samuelgtetteh/live-target-lab) | Two standing Docker services that continuously generate synthetic login events and OT sensor telemetry and stream them to `/identity/score` and `/ics/score`, so both models can be observed against a continuous live-like source. |
+
+See `docs/system_landscape.md` for the full map of how all the repos and containers fit together, and `docs/progress_log.md` for a dated changelog of recent work.
+
+---
+
 ## Git Remotes
 
 ```bash
 git push origin main   # → github.com/samuelgtetteh/ai-cybersecurity-portfolio
 ```
+
+The two related repos above are pushed independently from their own directories (`cloud-target-lab/`, `live-target-lab/`), each with its own `git push origin main`.
