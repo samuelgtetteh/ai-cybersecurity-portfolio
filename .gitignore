@@ -32,10 +32,14 @@ models/
 control-advisor/reports/
 control-advisor/scan_report.json
 
-# Docker log snapshots (runtime artifacts, not source)
+# Docker log snapshots (runtime artifacts, not source) — but keep the tooling
+# scripts and the one committed evidence snapshot that backs Exhibit 14.
 docs/logs/*
 !docs/logs/.gitkeep
 !docs/logs/*.ps1
+!docs/logs/*.py
+!docs/logs/2026-07-05_120350/
+!docs/logs/2026-07-05_120350/**
 
 # Claude Code local session state
 .claude/
