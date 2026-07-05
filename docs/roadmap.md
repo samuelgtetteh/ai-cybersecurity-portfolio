@@ -38,23 +38,25 @@ Everything below assumes a committed starting point.
 
 ---
 
-## Publication Track — Scientific Paper  (depends on Phase 1; drafting starts as Phase 1 results land)
-**Objective:** produce a scientific paper from the evaluated work. Phase 1's rigor *is* the paper's results section — the two are one effort, not two — so Phase 1 must be executed paper-aware.
+## Publication Track — Three Scientific Papers (one per model)
+**Scope decision (made):** publish a separate focused paper for each model rather than one integrated paper. Papers are authored as Word documents, kept local (`paper/` is gitignored). Goal: arXiv preprint baseline + a peer-reviewed venue (Computers & Security / USENIX CSET / IEEE Access / MDPI); submit to one venue at a time. Each paper's rigor comes from Phase 1's paper-aware evaluation.
 
-**Decisions deferred until Phase 1 results are in** (leanings noted):
-- **Scope:** integrated systems paper (all three models + detection→decisioning pipeline) vs. one focused project (RegMap, or OT/ICS with the label-leakage lesson) vs. a lessons/reproducibility paper. *Decide once the rigor results show where the strongest, most defensible story is.*
-- **Goal / venue:** arXiv preprint (baseline — immediate, legitimate scholarly-contribution evidence for the NIW petition) with optional escalation to a peer-reviewed workshop/conference.
+**Paper 1 — OT/ICS (`paper/ot_ics/`) — DRAFTED.**
+"Label Leakage in ICS Anomaly Detection: A Reproducible Re-Evaluation of an Autoencoder Detector on the HAI Testbed." Contribution: the label-leakage pitfall + rigorous leakage-free evaluation (ROC AUC 0.929, threshold-calibration finding, baselines). Ground truth: HAI attack labels. Remaining: finish citation verification; optional eTaPR for like-for-like HAI comparison.
 
-**Honest contribution framing** (the methods themselves are established — Isolation Forest, autoencoder, Sentence-BERT fine-tuning — so novelty must come from one of):
-- applied/systems integration (detection → live serving → real-time response → NIST control recommendation);
-- reproducibility + rigorous re-evaluation;
-- the OT/ICS label-leakage finding as a cautionary methodological result.
+**Paper 2 — Identity (`paper/identity/`) — APPROACH TO DECIDE.**
+Hybrid identity anomaly detection on LANL auth logs. **Blocker:** the available LANL data has no red-team ground truth, so a detection-accuracy evaluation is not possible without acquiring labels. Two paths: (a) obtain LANL red-team labels and do a supervised evaluation; or (b) reframe as a systems/methodology paper — batch→streaming adaptation, rolling-window behavioural features, live validation harness — with qualitative analysis instead of accuracy metrics.
 
-**Workstream (when started):** literature review & related-work positioning · contribution statement · IMRaD structure · figures/tables from Phase 1 · reproducibility appendix (the repo already supports this) · arXiv formatting.
+> **★ ACTION ITEM — Red-team ground truth (to work on).** Acquire the LANL red-team labels (`redteam.txt` from the LANL "Comprehensive, Multi-Source Cyber-Security Events" dataset, Kent 2015, public at csr.lanl.gov) and align them to the processed authentication window (our 2M-event slice). Requires: (1) confirming our slice overlaps the labelled red-team period; (2) joining red-team events to `lanl_auth_with_anomalies.csv` by (time, src_user, dst_pc) to create a binary ground-truth column; (3) re-running a supervised evaluation (ROC/AUC, PR/AP, operating point) like the OT/ICS one. If the slice doesn't overlap the red-team window, either re-slice the raw data to include it or fall back to path (b). This unlocks a rigorous Identity paper.
 
-**Prerequisite:** Phase 1 complete and paper-aware. If the scope becomes the integrated systems paper, Phase 2 (real-time decisioning) should also be complete so it can be included.
+**Paper 3 — RegMap (`paper/regmap/`) — FEASIBLE, NOT BUILT.**
+"Automated regulatory crosswalking: fine-tuned semantic retrieval for NIST 800-53 → HIPAA mapping." Contribution: task framing + fine-tuning gains over baselines (off-the-shelf SBERT, keyword/BM25), Recall@k / MRR / MAP with confidence intervals. Ground truth: the NIST↔HIPAA crosswalk. Strong and quick to make rigorous.
 
-**Done when:** a submission-ready manuscript (arXiv at minimum) with defensible results, prior-work comparison, and a clear contribution claim.
+**Honest contribution framing** (methods are established, so novelty is applied/systems/reproducibility, not new algorithms).
+
+**Recommended order:** OT/ICS (done) → RegMap (fastest, clean ground truth) → Identity (after deciding its approach).
+
+**Done when:** each model has a submission-ready manuscript with defensible results, prior-work comparison, and a clear contribution claim.
 
 ---
 
