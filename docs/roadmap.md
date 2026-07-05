@@ -47,7 +47,27 @@ Everything below assumes a committed starting point.
 **Paper 2 — Identity (`paper/identity/`) — APPROACH TO DECIDE.**
 Hybrid identity anomaly detection on LANL auth logs. **Blocker:** the available LANL data has no red-team ground truth, so a detection-accuracy evaluation is not possible without acquiring labels. Two paths: (a) obtain LANL red-team labels and do a supervised evaluation; or (b) reframe as a systems/methodology paper — batch→streaming adaptation, rolling-window behavioural features, live validation harness — with qualitative analysis instead of accuracy metrics.
 
-> **★ ACTION ITEM — Red-team ground truth (to work on).** Acquire the LANL red-team labels (`redteam.txt` from the LANL "Comprehensive, Multi-Source Cyber-Security Events" dataset, Kent 2015, public at csr.lanl.gov) and align them to the processed authentication window (our 2M-event slice). Requires: (1) confirming our slice overlaps the labelled red-team period; (2) joining red-team events to `lanl_auth_with_anomalies.csv` by (time, src_user, dst_pc) to create a binary ground-truth column; (3) re-running a supervised evaluation (ROC/AUC, PR/AP, operating point) like the OT/ICS one. If the slice doesn't overlap the red-team window, either re-slice the raw data to include it or fall back to path (b). This unlocks a rigorous Identity paper.
+> **★ ACTION ITEM — Red-team ground truth (BLOCKED: data window mismatch).**
+> **Finding (2026-07-05):** our processed LANL slices cover only the very start of
+> the dataset — the 500k-row slice spans time 1–5118 (~1.4 h) and the 2M-row slice
+> time 1–20376 (~5.7 h), both within day 1. LANL red-team events do not begin until
+> ~day 2 (time ~150,000+), so **there is zero red-team overlap in our data**, and the
+> raw `auth.txt` is **not stored locally**. Aligning red-team labels therefore
+> requires re-acquiring the raw dataset, not just downloading `redteam.txt`.
+>
+> **To unlock the rigorous Identity paper (needs a large manual download):**
+> 1. Download `auth.txt.gz` (~12 GB compressed) and `redteam.txt` from
+>    https://csr.lanl.gov/data/cyber1/ (too large to pull inside the agent session).
+> 2. Re-slice `auth.txt` to the red-team window (≈ time 150,000–750,000).
+> 3. Re-engineer the same features; train on a normal sub-window; evaluate the
+>    detector against the red-team labels (ROC/AUC, PR/AP, operating point).
+>
+> **Fallbacks if the download isn't done:** (b) reframe Identity as a
+> systems/methodology + reproducibility paper (batch→streaming, behavioural
+> features, live validation, qualitative analysis) — no accuracy claims; or
+> (c) semi-synthetic evaluation: inject the live-target-lab behavioural-burst
+> attacks into held-out normal LANL data and measure detection, clearly labelled
+> as controlled/synthetic rather than real red-team.
 
 **Paper 3 — RegMap (`paper/regmap/`) — FEASIBLE, NOT BUILT.**
 "Automated regulatory crosswalking: fine-tuned semantic retrieval for NIST 800-53 → HIPAA mapping." Contribution: task framing + fine-tuning gains over baselines (off-the-shelf SBERT, keyword/BM25), Recall@k / MRR / MAP with confidence intervals. Ground truth: the NIST↔HIPAA crosswalk. Strong and quick to make rigorous.
