@@ -31,12 +31,16 @@ request; this log is the referenceable record of what was done):
   Rigorous eval via `eval_regmap.py`: fine-tuning lifts Recall@5 0.500 → **0.735**
   and beats BM25 (0.353) and TF-IDF (0.500), bootstrap 95% CIs. 5 equations;
   25 verified references; 4-part Related Work.
-- `paper/identity/` — LANL red-team supervised evaluation (in progress). Required
-  acquiring the raw `auth.txt.gz` (7.6 GB) + `redteam.txt.gz`, because the
-  processed LANL slices are day-1 only and predate red-team activity. Window
+- `paper/identity/` — "Access Breadth over Ensembles: A Red-Team Evaluation …
+  LANL." Required acquiring the raw `auth.txt.gz` (7.6 GB) + `redteam.txt.gz`
+  (the processed slices are day-1 only and predate red-team activity). Window
   [150000, 500000] extracted to `data/raw/auth_window.csv` (61.5M rows, 46
-  red-team events); `eval_identity.py` retrains an Isolation Forest on the
-  window's normal events and scores against red-team labels (AUC/AP + baselines).
+  red-team logins); `eval_identity.py` fits an Isolation Forest on the window's
+  normal events and scores against red-team labels. Result: **AUC 0.803**
+  (CI 0.786–0.819); central finding — **access breadth (unique_pcs) alone AUC
+  0.905** beats the full ensemble; login volume is below chance. Paper reframed
+  around this: 4 equations, 4-part Related Work, 25 verified references.
+  All three papers are now drafted (local in `paper/`).
 
 Citations: all foundational references verified against primary sources this
 session (arXiv / ACM DL / IEEE / USENIX / Springer / ACL & IR anthologies).
