@@ -56,6 +56,21 @@ Corrections (committed):
 - `train2.csv` actually contains 776 attack rows (so the 18,303 total = 776 +
   11,538 + 5,989); canonical test = test1+test2 = 17,527 attacks.
 
+Papers finalized (local `paper/`; see `paper/README.md` for the full runbook):
+- **eTaPR** computed for OT/ICS via `faster-eTaPR` (compute_etapr.py, with a documented
+  sklearn compat shim): eTaPR-F1 ~0.32 (test1) / 0.61 (test2) at the 99th-pct
+  threshold — below the HAICon leaderboard (0.84–0.94 on HAI 21.03), as expected
+  for a plain autoencoder; added to the paper with honest caveats.
+- **references.bib** synced to the full verified reference lists for all three papers
+  (generator: scratchpad/generate_bib.py; 29 / 25 / 25 entries).
+- **LaTeX / arXiv**: `paper.tex` generated per paper (arXiv-ready `article` class,
+  native math, booktabs tables, figures, `\citep` against references.bib; generator
+  scratchpad/build_latex.py). Verified 0 double-escape artifacts and every `\citep`
+  key resolves in the bib. Compile on Overleaf/arXiv (no local TeX toolchain here).
+- **Venue variants**: `paper_{cs,cset,ieee,mdpi}.docx` for each paper via the
+  build_paper.py venue flag (title-page label; swap the LaTeX documentclass for a
+  venue's real template).
+
 Reproducible notebooks (tracked, on GitHub, with metrics + figures embedded):
 - `notebooks/05_ot_ics_paper_evaluation.ipynb`
 - `notebooks/06_regmap_paper_evaluation.ipynb`
