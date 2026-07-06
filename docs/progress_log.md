@@ -52,7 +52,18 @@ Corrections (committed):
 - `train2.csv` actually contains 776 attack rows (so the 18,303 total = 776 +
   11,538 + 5,989); canonical test = test1+test2 = 17,527 attacks.
 
-Reproduce a paper's numbers:
+Reproducible notebooks (tracked, on GitHub, with metrics + figures embedded):
+- `notebooks/05_ot_ics_paper_evaluation.ipynb`
+- `notebooks/06_regmap_paper_evaluation.ipynb`
+- `notebooks/07_identity_redteam_evaluation.ipynb`
+
+Identity red-team result (notebook 07): context-aware Isolation Forest **AUC 0.803**
+(95% CI 0.786–0.819) on 48 real red-team logins; notable honest finding — the
+single feature `unique_pcs` (distinct machines per account) alone scores **AUC
+0.905**, out-performing the full model, because lateral movement is strongly
+signalled by access breadth. The Identity paper is being reframed around this.
+
+Reproduce a paper's numbers: run the corresponding notebook (05/06/07), or
 `python paper/<name>/eval_*.py` then `python paper/<name>/build_paper.py`.
 
 ## 2026-07-04

@@ -166,6 +166,9 @@ notebooks/
   02_embedder_training_good.ipynb       RegMap Sentence-BERT training & eval
   03b_hybrid_identity_anomaly_polars.ipynb  LANL identity anomaly (Polars, 2M rows)
   04_ot_ics_intrusion_detection.ipynb   HAI autoencoder training & eval
+  05_ot_ics_paper_evaluation.ipynb      OT/ICS rigorous eval (ROC/AUC, baselines, thresholds)
+  06_regmap_paper_evaluation.ipynb      RegMap retrieval eval (Recall@k/MRR/MAP + baselines, CIs)
+  07_identity_redteam_evaluation.ipynb  Identity vs LANL red-team ground truth (AUC + baselines)
 
 demo/
   app.py                                Streamlit demo for RegMap
