@@ -4,7 +4,132 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
-## 2026-07-05
+## 2026-07-11
+
+**Identity paper: full scholarly expansion + two reproducibility fixes that changed the
+headline. Robust-signal reframing (title changed).**
+
+Expansion (local `paper/identity/`, gitignored; this log is the committed record):
+- `paper.tex` rewritten from the ~600-word draft to a full ~4,600-word manuscript: Background,
+  Threat Model, expanded 4-part Related Work (positioning vs Euler, LMDetect, Bowman's UA rule),
+  Dataset (day-2 window + subsampling treatment), Method, and a Results section with per-feature
+  attribution, feature-group ablation, leave-one-out, distributions, access-breadth rule, ranking
+  (recall@FPR / precision@K), subsample invariance, and a prior-work positioning subsection; plus
+  Discussion, Limitations, Conclusion.
+- Added `euler` (King & Huang, TOPS 2023) and `lmdetect` (Zhou et al., arXiv 2411.10279) to
+  `references.bib`; woven throughout.
+
+New experiments (`paper/identity/eval_extras.py`; results appended to `results_identity.json`;
+mirrored in self-contained tracked notebook `notebooks/07b_identity_extended_evaluation.ipynb`):
+- Per-feature univariate AUC, feature-group Isolation Forests, leave-one-out, red-vs-normal
+  distributions, access-breadth threshold rule, recall@FPR / precision@K, subsample invariance.
+
+**Two determinism bugs found and fixed (this is why the headline moved):**
+1. **Nondeterministic categorical encoding.** `sample[col].unique()` order is not stable in polars;
+   since Isolation Forest treats the integer codes as ordinal, the ensemble AUC varied run-to-run
+   (0.85-0.90). Fixed by sorting categories before encoding.
+2. **Nondeterministic row order.** Streaming joins don't preserve order and IF samples rows by index,
+   so the ensemble AUC still drifted. Fixed by a total-order row sort on all raw columns.
+   After both fixes, base `auc` == extras `all_9.auc` == **0.900** exactly; fully reproducible.
+   (The count features unique_pcs/hourly_count were always deterministic, so the central finding
+   never depended on the bug.)
+
+**Headline change (thesis reframed, user-approved "robust-signal framing"):**
+- The old draft claimed access breadth (0.905) *beats* the ensemble (0.853). The 0.853 was an
+  artifact of the buggy encoding. Corrected deterministic numbers: **ensemble AUC 0.900**
+  (CI 0.893-0.908); **access breadth alone 0.905** (matches ensemble); **auth_type 0.931**
+  (nominally highest but a fragile ordinal encoding of an unordered categorical -- documented as
+  the fragility we hit); **login volume 0.423** (below chance -- noisiest accounts are legitimate
+  service accounts, max 65,781 logins / 4,358 machines).
+- **New operational finding that carries the paper:** at 10% FPR, access breadth recovers **0.96**
+  of red-team logins vs the ensemble's **0.65** -- access breadth *dominates* in the low-FPR triage
+  regime even though AUCs tie. Near-parameter-free rule (unique_pcs >= 20 machines) catches 47/48 at
+  10% FPR.
+- Title changed: "Access Breadth over Ensembles" -> **"Access Breadth as a Robust Signal for
+  Credential-Based Lateral Movement: A Red-Team Feature-Attribution Study on the LANL Dataset."**
+  Affiliation + artifact footnote (notebooks 07 + 07b) added.
+- Verification: 44-point automated check passes; base==extras consistency confirmed; all citations
+  resolve; figures present; stale 0.853 / "beats the ensemble" claims removed.
+
+## 2026-07-10
+
+**OT/ICS paper: full manuscript expansion + peer-review revision with new
+experiments. Two major findings.**
+
+Paper expansion (local `paper/ot_ics/`, gitignored — this log is the committed
+record):
+- `paper.tex` hand-expanded from the ~1,500-word generated draft to a full
+  ~7,500-word manuscript (Background, Threat Model, dedicated pitfall sections,
+  Experimental Setup, expanded Results, Limitations). **`paper.tex` is now
+  hand-authored — do NOT re-run `build_latex.py` for ot_ics or it will clobber
+  it.** The `.docx` variants still contain the old short text (out of sync).
+- Added `kus22` (CPSS '22 "False Sense of Security"), `aslam24` (ImpAE, SSCE
+  2024), `abshari26` (CPS anomaly-detection survey) to `references.bib`; all
+  cited in the body. Target venue recommendation on record: USENIX CSET first
+  (evaluation/reproducibility genre; HAI's home venue), IEEE Access fallback.
+- Two peer reviews performed (mine: evidentiary gaps; external AI review:
+  narrative framing — partially unreliable, two comments already satisfied in
+  text, one fabricated quote). Merged into an 11-item revision plan, executed.
+
+New experiments (`paper/ot_ics/eval_extras.py`, `leakage_attribution.py`;
+results appended to `results_ot_ics.json`; runbook updated in `paper/README.md`):
+- **Finding 1 — leaked model quantified exactly.** The original leaked artifact
+  was preserved (`autoencoder_hai_leaky_backup.pth`, 63 inputs = 59 sensors +
+  `attack`,`attack_P1/P2/P3`): ROC AUC = 1.000000, AP = 1.000000 exactly;
+  100% recall @ 1% FPR (clean model: 64.2%). Label channels: MSE 50.1 on
+  attacks vs 1.4e-4 on normals (5 orders of magnitude). **Deeper result: the
+  contamination is model-deep** — sensor-channel errors ALONE still give AUC
+  1.0 (leaked inputs steer the latent code), so a leaked model cannot be
+  salvaged at scoring time; only retraining fixes it. New figure
+  `figures/leakage_channels.png`.
+- **Finding 2 — second pitfall: cross-session normal contamination.** Notebook
+  04 pooled ALL FOUR files' normal rows before the 80/20 split, so ~80% of
+  test-file normals (and the scaler) were seen in training by the deployed
+  model. A strict session-disjoint retrain (identical arch/hypers: 50 epochs,
+  batch 256, Adam lr=1e-3, seed 42; trained on 495,021 train-file normals;
+  new artifacts `autoencoder_hai_strict.pth`/`scaler_hai_strict.pkl`) scores
+  **AUC 0.869 / AP 0.682** vs the pooled 0.929/0.733. The paper now reports
+  the full honesty ladder: leaked 1.000 -> pooled 0.929 -> strict 0.869.
+- Nominal-vs-realized FPR calibration: percentile thresholds calibrated on
+  held-out same-session normals overshoot on test-session normals by 2.1x
+  (90th pct) to 26.2x (99.9th); default threshold: 9.1% same-session -> 20.1%
+  test-session. The STRICT model is worse: nominal 5% -> realized 75.4% (15x),
+  nominal 1% -> 53.4% (53x). Honest training improves ranking, worsens
+  fixed-threshold calibration.
+- Temporal alarm aggregation (min-run-length k): at p99 threshold, k=10 cuts
+  alert episodes 1,788 -> 179 (10x) with segment recall 89.5% -> 84.2%; at the
+  default threshold 7,946 -> 247 (32x), still catching 36/38 attack segments.
+  38 labelled attack segments total in test1+test2.
+- Per-process AUC per method: AE 0.932/0.979/0.897 (P1/P2/P3) vs PCA
+  0.881/0.903/0.725 vs IF 0.806/0.837/0.719 — baselines fail hardest on P3.
+- Block bootstrap (1-h blocks, 500 resamples): AUC 0.929 CI95 [0.893, 0.960];
+  AP 0.733 CI95 [0.613, 0.827].
+- Label structure: 5,169 test rows carry multiple per-process labels
+  (why P1+P2+P3 counts = 22,696 > 17,527 global attacks); 0 unattributed;
+  no attack_P4 column exists in HAI 21.03.
+- Paper also gained: affiliation, artifact-URL footnote (GitHub + notebook 05),
+  SWaT/WADI leakage warning, threshold-provenance paragraph (default 0.009223
+  = 95th pct of pooled-split validation normals ~= 90.8th pct of train-session
+  normals), threat-model->triage bridge, eTaPR reframed as thesis validation.
+- Verification: 72-point automated check — every paper number matches
+  `results_ot_ics.json`; all citations resolve; all 5 figures exist; no
+  dangling refs.
+
+**Consistency updates applied (dual-protocol presentation, user-approved):**
+- `README.md`: Results-at-a-Glance row now "0.929 (pooled) / 0.869
+  (session-disjoint)"; OT/ICS section rewritten around the honesty ladder
+  (leaked 1.000000 exact -> pooled 0.929 w/ CI -> strict 0.869), calibration
+  inflation note, alarm-aggregation row; repo layout lists notebook 05b.
+- `Exhibit 13` DOCX: inserted new §4.4 "Protocol Audit: Leakage Quantified
+  Exactly and a Session-Disjoint Re-Evaluation (July 2026)" (patched in place
+  via python-docx; two paragraphs covering both findings, ladder, calibration,
+  alarm filtering — framed as evidence of scientific rigor for NIW).
+- `notebooks/05b_ot_ics_extended_evaluation.ipynb` (tracked, self-contained):
+  mirrors eval_extras.py + leakage_attribution.py — leaked-model exact eval +
+  channel attribution figure, strict retrain (loads deterministic artifact if
+  present), nominal-vs-realized FPR, temporal aggregation, per-process AUC,
+  block bootstrap. Executed with outputs embedded. Paper artifact footnote
+  updated to cite notebooks 05 + 05b.
 
 **Real-time decisioning plan, three scientific papers, and OT/ICS number corrections.**
 

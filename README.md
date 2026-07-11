@@ -11,7 +11,7 @@ Three end-to-end machine learning prototypes covering compliance automation, ide
 |---------|---------|-------|------------|
 | RegMap – Compliance Mapping | NIST SP 800-53 / HIPAA crosswalk (222 pairs) | Fine-tuned Sentence-BERT | Recall@5 = 0.735 on 34-query test set |
 | Hybrid Identity Anomaly Detection | LANL Auth Logs (2M events) | Isolation Forest | 17,399 anomalies flagged (0.87%) |
-| OT/ICS Intrusion Detection | HAI Turbine/Boiler Testbed (995K samples) | Deep Autoencoder | ROC AUC 0.929 on 17,527 test attacks |
+| OT/ICS Intrusion Detection | HAI Turbine/Boiler Testbed (995K samples) | Deep Autoencoder | ROC AUC 0.929 (pooled) / 0.869 (session-disjoint) on 17,527 test attacks |
 
 ---
 
@@ -63,23 +63,24 @@ Unsupervised anomaly detection on 2 million authentication events from the LANL 
 ### 3. OT/ICS Intrusion Detection with Physics-Aware Autoencoder
 **Research Pathway:** Intrusion detection for operational technology and critical infrastructure
 
-A deep autoencoder trained exclusively on normal sensor and actuator readings from the HAI (Hardware-in-the-Loop Augmented ICS) turbine and boiler testbed. The model flags attacks by reconstruction error, with no labeled attack data required during training. Trained on 59 real sensor/actuator tags only (an earlier version inadvertently included the attack-label columns themselves as input features; that data leak has since been fixed by excluding them, and the model was retrained).
+A deep autoencoder trained exclusively on normal sensor and actuator readings from the HAI (Hardware-in-the-Loop Augmented ICS) turbine and boiler testbed. The model flags attacks by reconstruction error, with no labeled attack data required during training. Trained on 59 real sensor/actuator tags only — an earlier version inadvertently included the attack-label columns themselves as input features. That leak has been **quantified exactly** from the preserved leaked artifact: it scores a literally perfect ROC AUC 1.000000, and the contamination is model-deep (even its sensor-channel errors alone score AUC 1.0), so retraining without the leaked columns was the only fix.
 
-The model is reported under two evaluation protocols, which together tell an honest story about generalization:
+A subsequent protocol audit (2026-07-10) found a second, subtler pitfall in the original pipeline: normal rows were pooled across **all four HAI files** before the train/validation split, so ~80% of test-file normal rows were seen in training. The model is therefore reported under both protocols — an "honesty ladder" where each step down is less flattering and more deployable:
 
 | Metric | Value |
 |--------|-------|
 | Total samples | 995,400 |
 | Sensor features | 59 |
 | Model parameters | 36,059 |
-| **ROC AUC** (threshold-independent, canonical test files) | **0.929** |
-| Average precision (canonical) | 0.733 |
-| Random train/test split (optimistic): recall / precision | 84.3% / 0.61 (FPR 5%, base rate 8.6%) |
-| Canonical held-out test files (test1+test2, realistic): recall / precision @ MSE 0.009223 | 87.9% / 0.15 (FPR 20%, base rate 3.9%) |
-| Balanced operating point on canonical (99th pct, MSE 0.060) | recall 72.6%, precision 42.4%, FPR 4.0% |
+| Leaked model (59 sensors + 4 label columns) | ROC AUC 1.000000 — a broken evaluation, not a strong model |
+| **ROC AUC, leakage-free, pooled-normals protocol** | **0.929** (95% block-bootstrap CI 0.893–0.960; AP 0.733) |
+| **ROC AUC, leakage-free, strict session-disjoint protocol** | **0.869** (AP 0.682) — the number a deployment should expect |
+| Deployed threshold (MSE 0.009223) on canonical test files | recall 87.9%, precision 15.2%, FPR 20.1% |
+| Balanced operating point (99th pct, MSE 0.060) | recall 72.6%, precision 42.4%, FPR 4.0% |
+| Alarm aggregation (min-run k=10, default threshold) | 7,946 → 247 alert episodes (32×), 36/38 attack segments still caught |
 | Baselines (canonical) | PCA-reconstruction AUC 0.854; Isolation Forest AUC 0.804 |
 
-> The random-split figures (recall 84.3%, precision 0.61) are from the training notebook, where test-normal is drawn from the same sessions as training. Evaluating on HAI's **designated test files** — which are separate recording sessions — is harder (distribution shift raises the false-positive rate), so the same threshold yields lower precision there. ROC AUC 0.929 is threshold-independent and the headline result. The canonical re-evaluation, baselines, and full threshold-sensitivity analysis are reproducible via [`paper/ot_ics/eval_ot_ics.py`](paper/ot_ics/eval_ot_ics.py).
+> Percentile thresholds calibrated on same-session normals overshoot their nominal false-positive rates by 2.1×–26× on the session-disjoint test files (and up to 53× for the strictly trained model) — threshold calibration, not ranking quality, is the operational bottleneck. Both pitfalls, the dual-protocol evaluation, and the calibration analysis are documented in the accompanying paper and reproducible via [`paper/ot_ics/eval_ot_ics.py`](paper/ot_ics/eval_ot_ics.py) + [`paper/ot_ics/eval_extras.py`](paper/ot_ics/eval_extras.py), mirrored in tracked notebooks [`05`](notebooks/05_ot_ics_paper_evaluation.ipynb) and [`05b`](notebooks/05b_ot_ics_extended_evaluation.ipynb).
 
 - **Notebook:** [`notebooks/04_ot_ics_intrusion_detection.ipynb`](notebooks/04_ot_ics_intrusion_detection.ipynb)
 - **Live API:** `POST /ics/score` — scores one sensor reading at a time; `GET /ics/example` returns a real normal reading to try it with (see [Path to Production](#path-to-production-live-api))
@@ -167,6 +168,7 @@ notebooks/
   03b_hybrid_identity_anomaly_polars.ipynb  LANL identity anomaly (Polars, 2M rows)
   04_ot_ics_intrusion_detection.ipynb   HAI autoencoder training & eval
   05_ot_ics_paper_evaluation.ipynb      OT/ICS rigorous eval (ROC/AUC, baselines, thresholds)
+  05b_ot_ics_extended_evaluation.ipynb  OT/ICS leakage quantification, dual protocols, calibration, alarm filtering
   06_regmap_paper_evaluation.ipynb      RegMap retrieval eval (Recall@k/MRR/MAP + baselines, CIs)
   07_identity_redteam_evaluation.ipynb  Identity vs LANL red-team ground truth (AUC + baselines)
 
