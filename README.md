@@ -31,6 +31,8 @@ A fine-tuned Sentence-BERT model that retrieves the correct HIPAA Security Rule 
 | Test queries | 34 (held-out) |
 | Corpus size | 60 HIPAA provisions |
 
+> **Robustness (paper).** Under a stricter *group-split-by-control* (no NIST control shared between train and test), the fine-tuned model's single-relevant Recall@5 rises to **0.848** (95% block-bootstrap CI 0.727–0.970) and nDCG@10 to 0.677 — the fine-tuning gain is undiminished by the leakage-free split, indicating framework-level semantic learning rather than memorized phrasing. Under a multi-relevant protocol (all crosswalk-mapped provisions count) Recall@5 is 0.797 with MAP 0.668. Reproducible via [`paper/regmap/eval_extras.py`](paper/regmap/eval_extras.py), mirrored in tracked notebook [`06b`](notebooks/06b_regmap_extended_evaluation.ipynb).
+
 - **Notebook:** [`notebooks/02_embedder_training_good.ipynb`](notebooks/02_embedder_training_good.ipynb)
 - **Live Demo:** [`demo/app.py`](demo/app.py) — run with `streamlit run demo/app.py`
 - **Live API:** `POST /map` (see [Path to Production](#path-to-production-live-api) below)
@@ -170,7 +172,9 @@ notebooks/
   05_ot_ics_paper_evaluation.ipynb      OT/ICS rigorous eval (ROC/AUC, baselines, thresholds)
   05b_ot_ics_extended_evaluation.ipynb  OT/ICS leakage quantification, dual protocols, calibration, alarm filtering
   06_regmap_paper_evaluation.ipynb      RegMap retrieval eval (Recall@k/MRR/MAP + baselines, CIs)
+  06b_regmap_extended_evaluation.ipynb  RegMap nDCG + stricter group-split-by-control robustness
   07_identity_redteam_evaluation.ipynb  Identity vs LANL red-team ground truth (AUC + baselines)
+  07b_identity_extended_evaluation.ipynb  Identity feature attribution, ablations, subsample invariance
 
 demo/
   app.py                                Streamlit demo for RegMap

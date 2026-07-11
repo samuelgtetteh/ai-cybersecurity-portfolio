@@ -4,6 +4,31 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-11 (later) — RegMap paper: full scholarly expansion + nDCG & group-split robustness
+
+RegMap (NIST SP 800-53 → HIPAA) paper brought to the same standard as the other two.
+Plan + resume checkpoint: `docs/regmap_expansion_plan.md`.
+
+Manuscript (local `paper/regmap/paper.tex`, gitignored; this log is the committed record):
+- Rewrote the ~1.5-page skeleton into a full manuscript: Introduction + Contributions, Background
+  (crosswalking, why semantic retrieval, RegNLP), 4-part Related Work, Problem Definition, expanded
+  Dataset/Method/Evaluation, single- AND multi-relevant results tables, Discussion, Limitations, Conclusion.
+- Applied the DePaul author affiliation block; added references `bianchi26` (KES 2026, near-twin
+  fine-tuned-SBERT method on EU cloud standards — positioned as complementary), `gokhan24` (RegNLP),
+  `agarwal21` (NIST 800-53 mapping), `ahmed24` (CIS controls).
+
+New experiments (`paper/regmap/eval_extras.py`; appended to `results_regmap.json`; mirrored in the
+self-contained tracked notebook `notebooks/06b_regmap_extended_evaluation.ipynb`):
+- nDCG@{5,10} on the pair-split (fine-tuned nDCG@10 0.544 vs base 0.434) to align with the
+  cloud-compliance literature's metric.
+- Stricter **group-split-by-control** (no control in both train and test; 33 queries from 20 controls):
+  fine-tuned single-relevant Recall@5 **0.848** (95% CI 0.727–0.970), nDCG@10 0.677 — the fine-tuning
+  gain is **undiminished** vs the pair-split (0.735), evidence the model learned framework-level
+  correspondence rather than memorized phrasing.
+
+Target venue: Cambridge *Natural Language Processing* (free via DePaul's Cambridge APC waiver;
+see `docs/publishing/publishing_recommendations.xlsx`).
+
 ## 2026-07-11
 
 **Identity paper: full scholarly expansion + two reproducibility fixes that changed the
