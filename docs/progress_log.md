@@ -4,6 +4,36 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-12 — Browser control plane: menu + multi-tool UI + Compliance Advisor wired in
+
+Redesigned the RegMap browser interface into a full **control plane** — a menu + tool navigation
+with multiple views, so everything the app can do runs from the browser. Also reconciled the
+pre-existing `control-advisor/` toolkit by wrapping it behind an API + UI (the "PowerShell tool in
+the browser" the user asked for: scan → interview questions → downloadable documents).
+- `backend/advisor_api.py` (new, `/advisor`): wraps control-advisor — `GET /environment`
+  (detect_environment), `POST /scan` (network_scan/cloud_scan + control_mapper → NIST 800-53 via
+  the RegMap embedder), `GET /questions` + `POST /followups` (the interview as an ADAPTIVE FORM;
+  triggers evaluated server-side, no LLM needed), `POST /report` (prioritize → DOCX/XLSX/JSON via
+  docx_report/xlsx_report/report_export), `GET /report/{id}/{fmt}` downloads, `GET /health`.
+  Authorization reuses securescan.authz (SCAN_ALLOW_ANY opt-in). LLM language (exec summary +
+  drafted policy) is OPTIONAL (`with_language`) and degrades to a templated summary when Qwen is
+  absent — so it's fast and works without the LLM in the image. control-advisor imported by adding
+  its `scanner/` dir to sys.path.
+- `backend/dashboard/index.html`: turned the single dashboard into a **multi-view SPA** — a `☰`
+  dropdown menu (Monitor/SecureScan/Compliance Advisor/Settings/Export trail/API/About) + tool
+  nav tabs + hash routing. Views: **Monitor** (the existing live SSE console), **SecureScan**
+  (target/ports/engine form → per-port results + CVEs w/ CVSS pills), **Compliance Advisor**
+  (3-step stepper: detect env & scan → adaptive interview form → generate report w/ exec summary,
+  a prioritized controls table, and DOCX/XLSX/JSON download buttons). Settings stays a drawer,
+  reachable from the menu.
+- `tests/test_advisor.py` (5): health, base questions, adaptive followups, scan+map (mocked),
+  full report generation + downloads (real docx/xlsx/json builders, no LLM). Full suite: 57 pass.
+- Dockerfile: installs python-docx/openpyxl/psutil/boto3; COPYs `backend/advisor_api.py`,
+  `control-advisor/scanner`, and `data/processed/labeled_pairs.csv` (control-advisor's corpus).
+- This delivers browser-control BC.2/BC.3 intent (run scans/audits + everything from the page).
+  BC.4 (real auth/login before mutating actions) still pending — flagged as important for a
+  cloud-hosted deployment before exposing scanning/config broadly.
+
 ## 2026-07-12 — SecureScan Phase 1 (asset discovery + CVE mapping), platform-integrated
 
 New tool `backend/securescan/` + `/scan` API: discover open ports/services on an authorized host,

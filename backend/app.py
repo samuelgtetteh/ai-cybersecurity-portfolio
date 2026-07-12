@@ -12,6 +12,7 @@ from identity_api import router as identity_router
 from ics_api import router as ics_router
 from decision_api import router as decision_router
 from scanner_api import router as scanner_router
+from advisor_api import router as advisor_router
 from verdict_store import record_verdict_safe, update_verdict_meta, record_request
 
 app = FastAPI(title="RegMap API")
@@ -19,6 +20,7 @@ app.include_router(identity_router)
 app.include_router(ics_router)
 app.include_router(decision_router)
 app.include_router(scanner_router)
+app.include_router(advisor_router)
 
 
 @app.middleware("http")

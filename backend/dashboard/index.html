@@ -109,28 +109,83 @@
   .setfoot{display:flex;gap:8px;align-items:center;padding:12px 16px;border-top:1px solid var(--line);background:var(--panel2)}
   .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
   #set-msg{font-size:12px;color:var(--ok)}
+  /* --- app menu + tool navigation + views --- */
+  .menu{position:relative}
+  .menu .items{position:absolute;top:calc(100% + 6px);left:0;background:var(--panel);border:1px solid var(--line);border-radius:8px;min-width:230px;box-shadow:0 10px 30px rgba(0,0,0,.35);display:none;z-index:30;padding:6px}
+  .menu.open .items{display:block}
+  .menu .items a{display:block;padding:7px 10px;font-size:13px;color:var(--txt);text-decoration:none;border-radius:6px;cursor:pointer}
+  .menu .items a:hover{background:var(--pill)}
+  .menu .items .sep{height:1px;background:var(--line);margin:5px 4px}
+  nav.nav{display:flex;gap:2px}
+  nav.nav a{padding:9px 13px;font-size:13px;color:var(--muted);text-decoration:none;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+  nav.nav a:hover{color:var(--txt)}
+  nav.nav a.active{color:var(--txt);border-bottom-color:var(--accent)}
+  .view{display:none}.view.active{display:block}
+  .page{padding:16px 18px;max-width:1200px}
+  .page h2{margin:0 0 4px;font-size:17px}
+  .page .lead{color:var(--muted);font-size:13px;margin:0 0 14px;max-width:80ch}
+  .note{font-size:12px;color:var(--muted)}
+  .form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:6px}
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field label{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+  .field input,.field select{background:var(--pill);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:7px 9px;font-size:13px;min-width:120px}
+  .field input:focus,.field select:focus{outline:none;border-color:var(--accent)}
+  .sevpill{padding:1px 7px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+  .sev-critical{background:rgba(255,84,112,.20);color:var(--crit)} .sev-high{background:rgba(255,84,112,.12);color:var(--crit)}
+  .sev-medium{background:rgba(255,176,32,.16);color:var(--warn)} .sev-low{background:var(--pill);color:var(--muted)}
+  .rescard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .rescard h3{margin:0 0 8px;font-size:14px}
+  .cve{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:5px 0;border-top:1px solid var(--line);font-size:12px}
+  .qcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .qcard .q{font-weight:600;margin-bottom:8px}
+  .qopt{display:flex;gap:8px;align-items:flex-start;padding:5px 0;font-size:13px;cursor:pointer}
+  .qopt .d{color:var(--muted);font-size:12px}
+  .steps{display:flex;gap:8px;margin-bottom:16px;max-width:640px}
+  .step{flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:12px;color:var(--muted);background:var(--panel);text-align:center}
+  .step.on{border-color:var(--accent);color:var(--txt)}
+  .dlrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
+  @keyframes sp{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
 <header>
-  <h1>RegMap · Live Security Decisioning</h1>
+  <h1>RegMap</h1>
+  <div class="menu" id="appmenu">
+    <button class="btn" id="menubtn" title="menu">☰ Menu</button>
+    <div class="items">
+      <a data-view="monitor">📊 Monitor</a>
+      <a data-view="scan">🔎 SecureScan</a>
+      <a data-view="advisor">📋 Compliance Advisor</a>
+      <div class="sep"></div>
+      <a onclick="openSettings()">⚙ Settings</a>
+      <a onclick="exportTrail()">⬇ Export verdict trail (JSON)</a>
+      <div class="sep"></div>
+      <a href="/docs" target="_blank">API docs</a>
+      <a onclick="about()">About</a>
+    </div>
+  </div>
+  <nav class="nav" id="nav">
+    <a data-view="monitor">Monitor</a>
+    <a data-view="scan">SecureScan</a>
+    <a data-view="advisor">Compliance Advisor</a>
+  </nav>
   <div class="live"><span id="dot" class="dot"></span><span id="livetxt">connecting…</span></div>
   <div class="spacer"></div>
   <div class="stat"><b id="s-events">–</b><span>events</span></div>
-  <div class="stat"><b id="s-rate">–</b><span>events/min</span></div>
   <div class="stat"><b id="s-alerts">–</b><span>open alerts</span></div>
-  <div class="stat"><b id="s-db">–</b><span>log (used/cap)</span></div>
   <div class="stat"><b id="s-updated">–</b><span>updated</span></div>
   <button class="btn" id="cfgbtn" title="settings — personalize limits & thresholds">⚙</button>
   <button class="btn" id="themebtn" title="toggle light / dark">☀</button>
-  <a class="muted" href="/docs" title="raw API">API</a>
 </header>
 
+<div id="view-monitor" class="view active">
 <section class="cards" id="cards"></section>
 
 <main>
   <div class="panel">
-    <div class="head"><h2>Live decision feed</h2><div class="spacer"></div><span class="muted" id="feedcount"></span></div>
+    <div class="head"><h2>Live decision feed</h2><div class="spacer"></div>
+      <span class="muted" id="s-rate" title="events/min"></span>&nbsp;<span class="muted" id="feedcount"></span></div>
     <div class="feed" id="feed"></div>
   </div>
   <div style="display:flex;flex-direction:column;gap:14px;min-height:0">
@@ -147,6 +202,58 @@
     </div>
   </div>
 </main>
+</div>
+
+<!-- SecureScan tool -->
+<div id="view-scan" class="view">
+  <div class="page">
+    <h2>SecureScan — asset discovery &amp; CVE mapping</h2>
+    <p class="lead">Discover open ports/services on an authorized host and map each to known CVEs (NVD). Scans are restricted to loopback/private ranges unless the server opts in (SCAN_ALLOW_ANY). <span id="sc-engines" class="note"></span></p>
+    <div class="form">
+      <div class="field"><label>Target (host / IP)</label><input id="sc-target" value="127.0.0.1"></div>
+      <div class="field"><label>Ports</label><input id="sc-ports" value="1-1024" placeholder="1-1024 or 22,80,443"></div>
+      <div class="field"><label>Engine</label><select id="sc-engine"><option value="auto">auto</option><option value="socket">socket</option><option value="nmap">nmap</option></select></div>
+      <div class="field"><label>CVE mapping</label><select id="sc-cves"><option value="true">map CVEs</option><option value="false">ports only (fast)</option></select></div>
+      <button class="btn primary" id="sc-run">Scan</button>
+    </div>
+    <div id="sc-status" class="note" style="margin-top:8px"></div>
+    <div id="sc-results" style="margin-top:14px"></div>
+  </div>
+</div>
+
+<!-- Compliance Advisor tool (control-advisor pipeline) -->
+<div id="view-advisor" class="view">
+  <div class="page">
+    <h2>Compliance Advisor</h2>
+    <p class="lead">Scan your environment, answer a short interview, and generate NIST SP 800-53 control recommendations plus downloadable DOCX/XLSX/JSON reports — the same flow as the PowerShell tool, in your browser. <span id="ca-llm" class="note"></span></p>
+    <div class="steps">
+      <div class="step on" id="cst-1">1 · Environment &amp; scan</div>
+      <div class="step" id="cst-2">2 · Interview</div>
+      <div class="step" id="cst-3">3 · Report</div>
+    </div>
+    <div id="ca-step1">
+      <button class="btn" id="ca-detect">Detect environment</button>
+      <div id="ca-env" class="note" style="margin:10px 0"></div>
+      <div class="form">
+        <div class="field"><label>Target (CIDR or host)</label><input id="ca-target" placeholder="192.168.1.0/24 or 127.0.0.1"></div>
+        <div class="field"><label>Mode</label><select id="ca-mode"><option value="net">network scan</option><option value="cloud">AWS cloud audit</option></select></div>
+        <button class="btn primary" id="ca-scan">Scan &amp; map controls</button>
+      </div>
+      <div id="ca-scanout" style="margin-top:12px"></div>
+    </div>
+    <div id="ca-step2" style="display:none">
+      <div id="ca-questions"></div>
+      <button class="btn primary" id="ca-next">Continue</button>
+      <button class="btn" onclick="caGoStep(1)">Back</button>
+    </div>
+    <div id="ca-step3" style="display:none">
+      <p class="note"><label><input type="checkbox" id="ca-lang"> also generate written policy language &amp; executive summary (slower — uses the local LLM if available)</label></p>
+      <button class="btn primary" id="ca-generate">Generate report</button>
+      <button class="btn" onclick="caGoStep(2)">Back</button>
+      <div id="ca-report" style="margin-top:14px"></div>
+    </div>
+  </div>
+</div>
 
 <!-- Settings panel: personalize the operational limits/thresholds (BC.1) -->
 <aside id="setpanel">
@@ -210,8 +317,6 @@ function renderOverview(o){
     card('Compliance','regmap',null,by);
   $('s-events').textContent = (st.verdicts||0).toLocaleString();
   $('s-alerts').textContent = (o.alerts||[]).length;
-  const cap = (st.retention&&st.retention.max_verdicts)||0;
-  $('s-db').textContent = (st.verdicts||0).toLocaleString()+(cap?(' / '+cap.toLocaleString()):'');
   $('s-updated').textContent = new Date().toLocaleTimeString();
   // alerts — each row opens the case drawer; a quick close stays inline
   const ab = (o.alerts||[]).map(a=>{
@@ -412,7 +517,171 @@ async function resetSettings(){
   const d=await (await fetch('/decision/settings')).json(); renderSettings(d.groups);
 }
 
-document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeOverlays(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeOverlays(); $('appmenu').classList.remove('open'); } });
+
+// ================= App menu + tool navigation (multi-view shell) =================
+const VIEWS = ['monitor','scan','advisor'];
+function navigate(view){
+  if(!VIEWS.includes(view)) view='monitor';
+  VIEWS.forEach(v=>$('view-'+v).classList.toggle('active', v===view));
+  document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('active', a.dataset.view===view));
+  if(location.hash.slice(2)!==view) location.hash = '#/'+view;
+  if(view==='scan') scanInit();
+  if(view==='advisor') advisorInit();
+}
+function routeFromHash(){ navigate((location.hash.match(/^#\/(\w+)/)||[])[1] || 'monitor'); }
+window.addEventListener('hashchange', routeFromHash);
+document.querySelectorAll('[data-view]').forEach(a=>a.onclick=()=>{ navigate(a.dataset.view); $('appmenu').classList.remove('open'); });
+
+// dropdown menu open/close
+$('menubtn').onclick=(e)=>{ e.stopPropagation(); $('appmenu').classList.toggle('open'); };
+document.addEventListener('click', e=>{ if(!$('appmenu').contains(e.target)) $('appmenu').classList.remove('open'); });
+function about(){ $('appmenu').classList.remove('open');
+  alert('RegMap — AI Security Decisioning Platform\n\nMonitor: live Record→Decide→Act→triage console\nSecureScan: asset discovery + CVE mapping (NVD)\nCompliance Advisor: scan → interview → NIST 800-53 controls + reports\nSettings: personalize operational limits\n\nAll tools run from this browser interface.'); }
+async function exportTrail(){ $('appmenu').classList.remove('open');
+  try{ const d=await (await fetch('/decision/verdicts?limit=1000')).json();
+    const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download='verdict_trail.json'; a.click(); URL.revokeObjectURL(a.href);
+  }catch(e){ alert('export failed'); } }
+
+// ================= SecureScan view =================
+let scanReady=false;
+async function scanInit(){ if(scanReady) return; scanReady=true;
+  try{ const d=await (await fetch('/scan/engines')).json();
+    $('sc-engines').textContent = `engines: ${d.engines.join(', ')} · default ${d.default}` + (d.authorization.allow_any?' · SCAN_ALLOW_ANY on':'');
+  }catch(e){}
+  $('sc-run').onclick = runScan;
+}
+function cvssPill(s){ if(s==null) return '<span class="sevpill sev-low">n/a</span>';
+  const sev = s>=9?'critical':s>=7?'high':s>=4?'medium':'low';
+  return `<span class="sevpill sev-${sev}">${s} ${sev.toUpperCase()}</span>`; }
+async function runScan(){
+  const target=$('sc-target').value.trim(); const ports=$('sc-ports').value.trim();
+  const engine=$('sc-engine').value; const withCves=$('sc-cves').value==='true';
+  $('sc-status').innerHTML='<span class="spin"></span> scanning '+esc(target)+'…'; $('sc-results').innerHTML='';
+  try{
+    const r=await fetch('/scan',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({target,ports:ports||null,engine,with_cves:withCves,record:true})});
+    const d=await r.json();
+    if(!r.ok){ $('sc-status').innerHTML='<span style="color:var(--crit)">'+esc(d.detail||'scan failed')+'</span>'; return; }
+    $('sc-status').textContent = `${d.ip} · ${d.up?'up':'no response'} · ${d.open_ports} open port(s) · engine ${d.engine}` + (d.cve_total?` · ${d.cve_total} CVE(s), max CVSS ${d.host_max_cvss}`:'');
+    if(!d.ports.length){ $('sc-results').innerHTML='<p class="note">No open ports found.</p>'; return; }
+    $('sc-results').innerHTML = d.ports.map(p=>{
+      const svc=[p.product,p.version].filter(Boolean).join(' ')||p.service||'—';
+      const cves=(p.cves||[]).map(c=>`<div class="cve">${cvssPill(c.cvss_score)}
+        <a href="${c.url||'#'}" target="_blank">${esc(c.cve_id)}</a>
+        <span class="muted" style="grid-column:1/-1">${esc(c.description||'')}</span></div>`).join('');
+      return `<div class="rescard"><h3>Port ${p.port}/${esc(p.proto||'tcp')} · ${esc(p.service||'?')} <span class="muted">${esc(svc)}</span></h3>
+        ${p.cpe?`<div class="note">CPE: ${esc(p.cpe)}</div>`:''}
+        ${cves||'<div class="note">no CVEs mapped</div>'}</div>`;
+    }).join('');
+  }catch(e){ $('sc-status').innerHTML='<span style="color:var(--crit)">request failed</span>'; }
+}
+
+// ================= Compliance Advisor view =================
+let advReady=false, caScan=null, caCats=[], caAnswers={}, caFollowLoaded=false;
+async function advisorInit(){ if(advReady) return; advReady=true;
+  try{ const h=await (await fetch('/advisor/health')).json();
+    $('ca-llm').textContent = h.available? (h.llm_language?'· written-language generation available':'· fast mode (no LLM language)') : '· advisor unavailable on this server';
+  }catch(e){}
+  $('ca-detect').onclick=caDetect; $('ca-scan').onclick=caScanRun;
+  $('ca-next').onclick=caContinue; $('ca-generate').onclick=caGenerate;
+}
+function caGoStep(n){ [1,2,3].forEach(i=>{ $('ca-step'+i).style.display = i===n?'block':'none'; $('cst-'+i).classList.toggle('on', i<=n); }); }
+async function caDetect(){
+  $('ca-env').innerHTML='<span class="spin"></span> detecting…';
+  try{ const e=await (await fetch('/advisor/environment')).json();
+    const ifs=(e.local_interfaces||[]).map(i=>`<a onclick="$('ca-target').value='${i.suggested_range||i.ip}'" style="cursor:pointer">${esc(i.ip)}${i.suggested_range?' ('+esc(i.suggested_range)+')':''}</a>`).join(' · ');
+    $('ca-env').innerHTML = `Docker: ${e.running_in_docker} · cloud: ${(e.is_cloud_instance||[]).join(',')||'no'} · outbound IP: ${esc(e.outbound_ip||'—')}<br>interfaces (click to use): ${ifs||'none'}`;
+  }catch(e){ $('ca-env').textContent='environment detection unavailable'; }
+}
+async function caScanRun(){
+  const target=$('ca-target').value.trim(); const cloud=$('ca-mode').value==='cloud';
+  if(!cloud && !target){ alert('enter a target CIDR or host'); return; }
+  $('ca-scanout').innerHTML='<span class="spin"></span> scanning &amp; mapping controls…';
+  try{
+    const r=await fetch('/advisor/scan',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({target:target||'0.0.0.0/32',cloud})});
+    const d=await r.json();
+    if(!r.ok){ $('ca-scanout').innerHTML='<span style="color:var(--crit)">'+esc(d.detail||'scan failed')+'</span>'; return; }
+    caScan=d; caCats=[]; (d.recommendations.hosts||[]).forEach(h=>(h.categories||[]).forEach(c=>{ if(!caCats.includes(c)) caCats.push(c); }));
+    const hosts=d.recommendations.hosts||[];
+    $('ca-scanout').innerHTML = `<div class="rescard"><h3>${hosts.length} asset(s), categories: ${caCats.map(esc).join(', ')||'none'}</h3>`+
+      hosts.slice(0,20).map(h=>`<div class="note">${esc(h.ip)} — ${Object.keys(h.recommended_controls||{}).length} category mappings</div>`).join('')+
+      `</div><button class="btn primary" onclick="caStartInterview()">Start interview →</button>`;
+  }catch(e){ $('ca-scanout').innerHTML='<span style="color:var(--crit)">request failed</span>'; }
+}
+async function caStartInterview(){
+  caAnswers={}; caFollowLoaded=false;
+  $('ca-questions').innerHTML='<span class="spin"></span> loading questions…';
+  caGoStep(2);
+  try{ const d=await (await fetch('/advisor/questions')).json();
+    let html=`<div class="qcard"><div class="q">${esc(d.business_name.question)}</div>
+      <input class="field" style="width:100%" data-qid="business_name" data-multi="0" type="text"></div>`;
+    html += d.questions.map(renderQuestion).join('');
+    $('ca-questions').innerHTML=html;
+  }catch(e){ $('ca-questions').innerHTML='could not load questions'; }
+}
+function renderQuestion(q){
+  const opts=q.options.map(o=>{
+    const inp = q.multi
+      ? `<input type="checkbox" data-qid="${q.id}" value="${esc(o.value)}">`
+      : `<input type="radio" name="q_${q.id}" data-qid="${q.id}" value="${esc(o.value)}">`;
+    return `<label class="qopt">${inp}<span><b>${esc(o.value)}</b> <span class="d">${esc(o.description)}</span></span></label>`;
+  }).join('');
+  return `<div class="qcard"><div class="q">${esc(q.question)}${q.multi?' <span class="note">(choose all that apply)</span>':''}</div>${opts}</div>`;
+}
+function collectAnswers(){
+  const ans={};
+  document.querySelectorAll('#ca-questions [data-qid]').forEach(el=>{
+    const id=el.dataset.qid;
+    if(el.type==='text'){ if(el.value.trim()) ans[id]=el.value.trim(); }
+    else if(el.type==='checkbox'){ if(el.checked){ (ans[id]=ans[id]||[]).push(el.value); } }
+    else if(el.type==='radio'){ if(el.checked) ans[id]=el.value; }
+  });
+  return ans;
+}
+async function caContinue(){
+  const ans=collectAnswers();
+  caAnswers={...caAnswers, ...ans};
+  if(!caFollowLoaded){
+    // fetch adaptive follow-ups based on answers + scan categories
+    try{ const r=await fetch('/advisor/followups',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({answers:caAnswers,categories:caCats})});
+      const d=await r.json(); caFollowLoaded=true;
+      if((d.questions||[]).length){
+        $('ca-questions').insertAdjacentHTML('beforeend',
+          '<div class="setgrp">Follow-up questions</div>'+d.questions.map(renderQuestion).join(''));
+        return; // stay on step 2 to answer follow-ups
+      }
+    }catch(e){}
+  }
+  caGoStep(3);
+}
+async function caGenerate(){
+  const withLang=$('ca-lang').checked;
+  $('ca-report').innerHTML='<span class="spin"></span> generating report'+(withLang?' with written language (this can take a few minutes)…':'…');
+  try{
+    const r=await fetch('/advisor/report',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({scan_report:caScan.scan_report,recommendations:caScan.recommendations,answers:caAnswers,with_language:withLang})});
+    const d=await r.json();
+    if(!r.ok){ $('ca-report').innerHTML='<span style="color:var(--crit)">'+esc(d.detail||'generation failed')+'</span>'; return; }
+    const base=d.download_base;
+    const rows=(d.rows||[]).slice(0,200).map(x=>`<tr><td><span class="sevpill sev-${(x.priority||'low').toLowerCase()}">${esc(x.priority||'')}</span></td>
+      <td>${esc(x.control_id||'')}</td><td>${esc(x.category||x.source||'')}</td><td class="muted">${esc((x.control_text||'').slice(0,90))}</td></tr>`).join('');
+    $('ca-report').innerHTML = `
+      <div class="rescard"><h3>Executive summary</h3><div class="note">${esc(d.executive_summary||'')}</div></div>
+      <div class="dlrow">
+        <a class="btn primary" href="${base}docx" download>⬇ DOCX report</a>
+        <a class="btn" href="${base}xlsx" download>⬇ XLSX workbook</a>
+        <a class="btn" href="${base}json" download>⬇ JSON</a>
+        ${d.llm_used?'<span class="note" style="align-self:center">· LLM-written language included</span>':''}
+      </div>
+      <div style="overflow:auto;margin-top:12px"><table><thead><tr><th>Priority</th><th>Control</th><th>Category</th><th>Description</th></tr></thead>
+        <tbody>${rows||'<tr><td colspan=4 class="note">no controls</td></tr>'}</tbody></table></div>`;
+  }catch(e){ $('ca-report').innerHTML='<span style="color:var(--crit)">request failed</span>'; }
+}
 
 function connect(){
   const es = new EventSource('/decision/stream');
@@ -426,6 +695,7 @@ function connect(){
   };
 }
 connect();
+routeFromHash();   // open the view named in the URL hash (default: monitor)
 </script>
 </body>
 </html>
