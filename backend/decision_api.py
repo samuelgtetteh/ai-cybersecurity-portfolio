@@ -23,6 +23,7 @@ from pydantic import BaseModel
 import actions
 import ai_triage
 import policy
+import settings as app_settings
 from verdict_store import (add_suppression, close_alert, enforce_retention, get_alert,
                            label_alert_verdicts, max_verdict_id, metrics, query_actions,
                            query_alert_events, query_alerts, query_requests, query_suppressions,
@@ -76,6 +77,42 @@ def get_requests(limit: int = Query(100, ge=1, le=1000)):
 def get_stats():
     """Coverage totals: verdicts, flagged, labelled, audited requests, per model, + retention caps."""
     return stats()
+
+
+@router.get("/settings")
+def get_settings():
+    """The user-editable operational limits/thresholds (grouped, with type/range/help and current
+    values) plus the flat effective map. Powers the dashboard settings panel (BC.1)."""
+    return {"groups": app_settings.describe(), "values": app_settings.effective()}
+
+
+class SettingsUpdate(BaseModel):
+    values: dict  # {SETTING_KEY: value} — validated against the registry (type + range)
+
+
+@router.patch("/settings")
+def patch_settings(body: SettingsUpdate):
+    """Persist one or more setting overrides; takes effect on the next verdict/evaluate (no
+    restart). Rejects unknown keys or out-of-range values (nothing is written if any is invalid)."""
+    try:
+        eff = app_settings.update(body.values)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return {"updated": sorted(body.values), "values": eff}
+
+
+class SettingsReset(BaseModel):
+    keys: Optional[list] = None  # None = reset everything to defaults
+
+
+@router.post("/settings/reset")
+def reset_settings_endpoint(body: SettingsReset = SettingsReset()):
+    """Revert overrides to their coded/env defaults (all keys, or a named subset)."""
+    try:
+        eff = app_settings.reset(body.keys)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return {"reset": body.keys or "all", "values": eff}
 
 
 @router.post("/retention/enforce")

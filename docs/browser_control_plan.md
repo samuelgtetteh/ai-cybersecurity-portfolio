@@ -1,7 +1,32 @@
 # Bookmark: "Run & configure the whole project from the browser"
 
-**Status: NOT STARTED — bookmarked 2026-07-12 for a future session (usage-limit checkpoint).**
-Build this after the alert case-management workflow (see `docs/decision_layer_plan.md`, section AQ) is committed.
+**Status: BC.1 DONE (2026-07-12). BC.2 + BC.3 not started.**
+Built after the alert case-management workflow (see `docs/decision_layer_plan.md`, section AQ).
+
+## BC.1 — DONE (settings menu / live config)
+Shipped a live settings store + browser panel to personalize the operational limits/thresholds.
+- `backend/settings.py` — REGISTRY (single source of truth: type, range, label, help, env/coded
+  default) for: retention caps (MAX_VERDICTS/REQUESTS/ACTIONS, RETENTION_TRIM_EVERY), policy
+  thresholds (DECISION_WINDOW_SECONDS, IDENTITY_BURST_MIN, ICS_SUSTAINED_MIN, ICS_SEVERE_ERROR,
+  IDENTITY_SEVERE, DECISION_SUPPRESS_MIN), REGMAP_FLAG_THRESHOLD, AI_TRIAGE_LLM toggle. get()/
+  effective()/update()/reset()/describe().
+- `backend/verdict_store.py` — `settings` table + LOCK-FREE cache (preloaded, swapped on write) +
+  get_setting[_int/float/bool]/set_setting_values/reset_settings. Retention reads caps live.
+- `backend/policy.py` reads thresholds live in evaluate(); `app.py` reads REGMAP_FLAG_THRESHOLD
+  live; `llm_client.py` reads AI_TRIAGE_LLM live (`_local_enabled`).
+- API: `GET /decision/settings` (grouped + values), `PATCH /decision/settings` (validated, live,
+  no restart), `POST /decision/settings/reset`.
+- UI: ⚙ button → settings drawer with grouped, validated inputs (number fields honour min/max/
+  step; bool = toggle), Save + Reset-all, "overridden" markers.
+- Key property (per the note below): consumers read the cache at point-of-use, so a change takes
+  effect on the NEXT verdict/evaluate with no restart. Tests: 20 pass (3 new).
+
+**To extend BC.1:** add a new tunable = one REGISTRY entry + read it via `settings.get("KEY")`
+at the point of use. The UI + validation + persistence are automatic.
+
+---
+
+## Original bookmark (BC.2 / BC.3 remain)
 
 ## What the user asked for
 > "Build a menu to help us configure many of the hard-coded limits we have in the app

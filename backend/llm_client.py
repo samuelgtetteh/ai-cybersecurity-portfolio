@@ -19,19 +19,25 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
+import settings
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 QWEN_PATH = BASE_DIR / "models" / "qwen2.5-1.5b-instruct"
 
 LLM_SERVICE_URL = os.environ.get("LLM_SERVICE_URL", "").strip().rstrip("/")
-LOCAL_LLM_ENABLED = (os.environ.get("AI_TRIAGE_LLM", "1").lower() not in ("0", "false", "")
-                     and QWEN_PATH.exists())
 
 _llm = None
 _tok = None
 
 
+def _local_enabled() -> bool:
+    """Whether in-process local generation is enabled — read LIVE from settings (BC.1), so the
+    AI-triage toggle can be flipped from the dashboard, gated by the model actually being present."""
+    return bool(settings.get("AI_TRIAGE_LLM")) and QWEN_PATH.exists()
+
+
 def available() -> bool:
-    return bool(LLM_SERVICE_URL) or LOCAL_LLM_ENABLED
+    return bool(LLM_SERVICE_URL) or _local_enabled()
 
 
 def _generate_sidecar(messages, max_new_tokens, timeout) -> Optional[str]:
@@ -69,7 +75,7 @@ def generate(messages, max_new_tokens: int = 160, timeout: float = 30.0) -> Opti
     try:
         if LLM_SERVICE_URL:
             return _generate_sidecar(messages, max_new_tokens, timeout)
-        if LOCAL_LLM_ENABLED:
+        if _local_enabled():
             return _generate_local(messages, max_new_tokens)
     except Exception:
         return None
