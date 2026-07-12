@@ -65,6 +65,30 @@
   .act{display:flex;gap:8px;align-items:center;padding:6px 14px;border-bottom:1px solid var(--line);font-size:12px}
   .act .s.ok{color:var(--ok)}.act .s.skipped{color:var(--muted)}.act .s.failed{color:var(--crit)}
   @media(max-width:1000px){.cards{grid-template-columns:1fr}main{grid-template-columns:1fr}}
+  .alertrow{cursor:pointer}.alertrow:hover{background:var(--flash)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:700;background:var(--pill);color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .pill.open{color:var(--warn)}.pill.acknowledged{color:var(--accent)}
+  /* --- alert case drawer --- */
+  #backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .18s;z-index:20}
+  #backdrop.show{opacity:1;pointer-events:auto}
+  #drawer{position:fixed;top:0;right:0;height:100%;width:min(560px,100%);background:var(--panel);border-left:1px solid var(--line);
+    transform:translateX(100%);transition:transform .2s;z-index:21;display:flex;flex-direction:column}
+  #drawer.show{transform:translateX(0)}
+  #drawer .dhead{display:flex;align-items:flex-start;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--panel2)}
+  #drawer .dhead h2{margin:0;font-size:15px}
+  #drawer .dhead .x{margin-left:auto;background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1}
+  #drawer .dbody{overflow:auto;padding:14px 16px;flex:1}
+  #drawer .meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin-bottom:12px}
+  #drawer .meta div{font-size:12px;color:var(--muted)}#drawer .meta b{color:var(--txt);font-size:13px}
+  .toolbar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+  .toolbar .btn{font-size:12px}
+  .btn.good{border-color:var(--crit);color:var(--crit)}.btn.fp{border-color:var(--ok);color:var(--ok)}
+  .sec{margin:14px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+  .kv{display:flex;gap:14px;font-size:13px}.kv b.mal{color:var(--crit)}.kv b.ben{color:var(--ok)}
+  #drawer table td,#drawer table th{padding:6px 8px;font-size:12px}
+  .trail .e{padding:7px 0;border-bottom:1px solid var(--line);font-size:12px}
+  .trail .e .a{font-weight:700;text-transform:capitalize}.trail .e .m{color:var(--muted)}
+  .triage{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13px}
 </style>
 </head>
 <body>
@@ -93,7 +117,7 @@
       <div class="head"><h2>Alert queue</h2><div class="spacer"></div>
         <button class="btn" id="reassess" title="LLM re-prioritize open alerts">Reassess</button></div>
       <div style="overflow:auto;max-height:40vh"><table id="alerts"><thead>
-        <tr><th>Rule</th><th>Subject</th><th>Sev</th><th>Prio</th><th>Why</th><th></th></tr>
+        <tr><th>Rule</th><th>Subject</th><th>Sev</th><th>Prio</th><th>Status</th><th></th></tr>
       </thead><tbody id="alertbody"></tbody></table></div>
     </div>
     <div class="panel">
@@ -102,6 +126,13 @@
     </div>
   </div>
 </main>
+
+<!-- Alert case drawer: opens when an analyst clicks an alert; shows evidence + full decision toolbar -->
+<div id="backdrop" onclick="closeDrawer()"></div>
+<aside id="drawer">
+  <div class="dhead"><h2 id="d-title">Alert</h2><button class="x" onclick="closeDrawer()">×</button></div>
+  <div class="dbody" id="d-body"></div>
+</aside>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -148,19 +179,17 @@ function renderOverview(o){
   const cap = (st.retention&&st.retention.max_verdicts)||0;
   $('s-db').textContent = (st.verdicts||0).toLocaleString()+(cap?(' / '+cap.toLocaleString()):'');
   $('s-updated').textContent = new Date().toLocaleTimeString();
-  // alerts
+  // alerts — each row opens the case drawer; a quick close stays inline
   const ab = (o.alerts||[]).map(a=>{
-    const reason = (a.detail&&a.detail.reason)||'';
-    const disp = a.disposition? `<span class="tag">${esc(a.disposition)}</span>`:'';
-    return `<tr><td>${esc(a.rule)}</td><td>${esc(a.subject||'—')}</td>
+    const who = a.assignee? ` · ${esc(a.assignee)}`:'';
+    return `<tr class="alertrow" onclick="openAlert(${a.id})">
+      <td>${esc(a.rule)}</td><td>${esc(a.subject||'—')}</td>
       <td class="sev ${esc(a.severity)}">${esc(a.severity)}</td>
       <td><span class="prio">${a.priority==null?'–':a.priority}</span></td>
-      <td class="muted" title="${esc(reason)}">${disp} ${esc(reason).slice(0,60)}</td>
-      <td><button class="btn" onclick="why(${a.id})">why</button>
-          <button class="btn" onclick="closeAlert(${a.id})">close</button></td></tr>
-      <tr id="why-${a.id}" style="display:none"><td colspan="6" class="why" id="whytxt-${a.id}"></td></tr>`;
+      <td><span class="pill ${esc(a.status)}">${esc(a.status)}</span>${who}</td>
+      <td><button class="btn" onclick="event.stopPropagation();closeAlert(${a.id})">close</button></td></tr>`;
   }).join('');
-  $('alertbody').innerHTML = ab || '<tr><td colspan="6" class="muted" style="padding:14px">No open alerts.</td></tr>';
+  $('alertbody').innerHTML = ab || '<tr><td colspan="6" class="muted" style="padding:14px">No active alerts.</td></tr>';
   // actions
   $('acts').innerHTML = (o.actions||[]).map(x=>
     `<div class="act"><span class="muted">${fmtTime(x.created_at)}</span>
@@ -189,17 +218,109 @@ function pushVerdicts(list){
   }).join('');
 }
 
-async function why(id){
-  const row=$('why-'+id), box=$('whytxt-'+id);
-  if(row.style.display==='none'){ row.style.display=''; box.textContent='loading triage…';
-    try{ const r=await fetch('/decision/alerts/'+id+'/triage'); const d=await r.json();
-      const ctl=(d.related_controls&&d.related_controls[0])?d.related_controls[0].provision:'—';
-      box.innerHTML = '<b>Triage:</b> '+esc(d.summary||'')+'<br><b>Related control:</b> '+esc(ctl);
-    }catch(e){ box.textContent='triage unavailable'; }
-  } else { row.style.display='none'; }
-}
 async function closeAlert(id){ await fetch('/decision/alerts/'+id+'/close',{method:'POST'}); }
 $('reassess').onclick = async()=>{ $('reassess').textContent='…'; try{ await fetch('/decision/reassess',{method:'POST'}); } finally { $('reassess').textContent='Reassess'; } };
+
+// ---------------- Alert case drawer (open, investigate, decide) ----------------
+let drawerId = null;
+function closeDrawer(){ drawerId=null; $('drawer').classList.remove('show'); $('backdrop').classList.remove('show'); }
+function ageStr(iso){ try{ const s=(Date.now()-new Date(iso).getTime())/1000;
+  if(s<90) return Math.round(s)+'s'; if(s<5400) return Math.round(s/60)+'m'; if(s<172800) return Math.round(s/3600)+'h'; return Math.round(s/86400)+'d'; }catch(e){return '';} }
+
+async function openAlert(id){
+  drawerId=id;
+  $('backdrop').classList.add('show'); $('drawer').classList.add('show');
+  $('d-title').textContent='Alert #'+id;
+  $('d-body').innerHTML='<p class="muted">loading case…</p>';
+  await renderCase(id);
+}
+
+async function renderCase(id){
+  let d; try{ d=await (await fetch('/decision/alerts/'+id)).json(); }
+  catch(e){ $('d-body').innerHTML='<p class="muted">could not load alert</p>'; return; }
+  if(d.detail && !d.alert){ $('d-body').innerHTML='<p class="muted">alert not found</p>'; return; }
+  const a=d.alert, det=a.detail||{}, h=d.subject_history||{};
+  $('d-title').innerHTML = esc(a.rule)+' <span class="pill '+esc(a.status)+'">'+esc(a.status)+'</span>';
+  const meta = `<div class="meta">
+    <div>Subject<br><b>${esc(a.subject||'—')}</b></div>
+    <div>Model<br><b>${esc(a.model||'—')}</b></div>
+    <div>Severity<br><b class="sev ${esc(a.severity)}">${esc(a.severity)}</b></div>
+    <div>Priority<br><b>${a.priority==null?'–':a.priority}</b></div>
+    <div>Age<br><b>${ageStr(a.created_at)}</b></div>
+    <div>Assignee<br><b>${esc(a.assignee||'—')}</b></div>
+    ${a.disposition?`<div>AI disposition<br><b>${esc(a.disposition)}</b></div>`:''}
+    ${a.resolution?`<div>Resolution<br><b>${esc(a.resolution)}</b></div>`:''}
+  </div>
+  <div class="muted" style="font-size:12px;margin:-4px 0 12px">${esc(det.reason||'')}</div>`;
+
+  const toolbar = `<div class="toolbar">
+    <button class="btn" onclick="act('acknowledge',${id})">Acknowledge</button>
+    <button class="btn" onclick="assign(${id})">Assign</button>
+    <button class="btn good" onclick="resolve(${id},'true_positive')" title="confirm real → labels evidence malicious">True positive</button>
+    <button class="btn fp" onclick="resolve(${id},'false_positive')" title="benign → labels evidence benign">False positive</button>
+    <button class="btn" onclick="suppress(${id})" title="allowlist this subject">Suppress</button>
+    <button class="btn" onclick="note(${id})">Add note</button>
+    <button class="btn" onclick="act('close',${id})">Close</button>
+  </div>
+  <div class="toolbar"><span class="muted" style="align-self:center;font-size:11px">Response:</span>
+    <button class="btn" onclick="respond(${id},'ticket')">Ticket</button>
+    <button class="btn" onclick="respond(${id},'webhook')">Webhook</button>
+    <button class="btn" onclick="respond(${id},'disable_account')" title="stub — recorded, no live effect">Disable account</button>
+    <button class="btn" onclick="respond(${id},'step_up_auth')" title="stub — recorded, no live effect">Step-up auth</button>
+  </div>`;
+
+  const triage = `<div class="sec">AI triage</div>
+    <div class="triage" id="d-triage"><button class="btn" onclick="loadTriage(${id})">Run triage</button></div>`;
+
+  const ev = (d.evidence||[]);
+  const evidence = `<div class="sec">Evidence — ${ev.length} contributing verdict(s)</div>
+    <table><thead><tr><th>Time</th><th>Model</th><th>Subject</th><th>Score</th><th></th></tr></thead><tbody>
+    ${ev.map(v=>`<tr><td>${fmtTime(v.recorded_at)}</td><td>${esc(v.model)}</td>
+      <td>${esc(v.subject||'—')}</td><td>${v.score==null?'':v.score}</td>
+      <td><span class="badge ${v.flagged?'alert':'ok'}">${v.flagged?'FLAG':'ok'}</span>${v.ground_truth?' <span class="tag">'+esc(v.ground_truth)+'</span>':''}</td></tr>`).join('')
+      || '<tr><td colspan="5" class="muted">no verdicts linked</td></tr>'}
+    </tbody></table>`;
+
+  const hist = `<div class="sec">Subject outcome history</div>
+    <div class="kv"><span>confirmed malicious <b class="mal">${h.malicious||0}</b></span>
+      <span>confirmed benign <b class="ben">${h.benign||0}</b></span></div>`;
+
+  const acts = (d.actions||[]);
+  const actsHtml = `<div class="sec">Response actions taken</div>`+
+    (acts.map(x=>`<div class="act"><span class="muted">${fmtTime(x.created_at)}</span>
+       <span class="tag">${esc(x.action_type)}</span><span class="s ${esc(x.status)}">${esc(x.status)}</span></div>`).join('')
+     || '<div class="muted" style="font-size:12px">none yet</div>');
+
+  const events = (d.events||[]);
+  const trail = `<div class="sec">Case history</div><div class="trail">`+
+    (events.map(e=>`<div class="e"><span class="a">${esc(e.action)}</span>
+       <span class="m"> · ${fmtTime(e.created_at)} · ${esc(e.actor||'—')}</span>
+       ${e.note?'<div class="m">“'+esc(e.note)+'”</div>':''}</div>`).join('')
+     || '<div class="muted" style="font-size:12px">no actions logged yet</div>')+`</div>`;
+
+  $('d-body').innerHTML = meta + toolbar + triage + evidence + hist + actsHtml + trail;
+}
+
+async function loadTriage(id){
+  const box=$('d-triage'); box.textContent='loading triage…';
+  try{ const t=await (await fetch('/decision/alerts/'+id+'/triage')).json();
+    const ctl=(t.related_controls&&t.related_controls[0])?(t.related_controls[0].provision||t.related_controls[0].hipaa_citation):'—';
+    box.innerHTML='<b>Summary:</b> '+esc(t.summary||'—')+'<br><b>Related control:</b> '+esc(ctl);
+  }catch(e){ box.textContent='triage unavailable'; }
+}
+
+// generic POST + refresh the open case
+async function post(url, body){ return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})}); }
+async function act(kind,id){ await post('/decision/alerts/'+id+'/'+kind,{}); if(kind==='close'){ closeDrawer(); } else { await renderCase(id); } }
+async function assign(id){ const who=prompt('Assign to analyst:'); if(who){ await post('/decision/alerts/'+id+'/assign',{assignee:who}); await renderCase(id); } }
+async function note(id){ const n=prompt('Add a note:'); if(n){ await post('/decision/alerts/'+id+'/note',{note:n}); await renderCase(id); } }
+async function resolve(id,res){ const n=prompt((res==='true_positive'?'Confirm TRUE positive':'Mark FALSE positive')+' — optional note:'); if(n===null) return;
+  await post('/decision/alerts/'+id+'/resolve',{resolution:res,note:n||null}); closeDrawer(); }
+async function suppress(id){ const hrs=prompt('Suppress this subject for how many hours? (blank = 24, 0 = indefinite)','24'); if(hrs===null) return;
+  const w = hrs===''?24:parseFloat(hrs); const reason=prompt('Reason (optional):')||null;
+  await post('/decision/alerts/'+id+'/suppress',{window_hours:w,reason:reason}); closeDrawer(); }
+async function respond(id,action){ await post('/decision/alerts/'+id+'/act',{action:action}); await renderCase(id); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDrawer(); });
 
 function connect(){
   const es = new EventSource('/decision/stream');

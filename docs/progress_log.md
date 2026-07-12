@@ -4,6 +4,37 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-12 — Analyst case-management workflow (Tier 1+2) + Exhibit 17
+
+Turned the read-only alert queue (why/close) into a full human-in-the-loop case-management
+workflow, driven entirely from the browser console. Everything committed + deployed (RedMap
+rebuilt & recreated from the fresh image).
+- `verdict_store.py`: alert lifecycle fields (`assignee`/`resolution`/`resolved_at`, status now
+  open|acknowledged|closed) + migration; new `alert_events` table (case audit trail) + new
+  `suppressions` table (allowlist). Fns: `verdicts_by_ids` (evidence), `update_alert`,
+  `record_alert_event`/`query_alert_events`, `label_alert_verdicts` (loop-closing feedback),
+  `add_suppression`/`query_suppressions`/`remove_suppression`/`is_suppressed`.
+- `policy.py`: honours the allowlist — `is_suppressed(subject,model)` skips identity_burst /
+  high_severity for allowlisted subjects.
+- `actions.py`: `manual_action(alert,type)` on-demand responder + safe posture-change STUBS
+  (`disable_account`, `step_up_auth` — recorded, no live IdP wired); `MANUAL_ACTIONS`.
+- `decision_api.py`: `GET /decision/alerts/{id}` (detail: evidence + subject history + actions +
+  events); POST `/acknowledge`, `/assign`, `/note`, `/resolve` (TP→malicious / FP→benign labels
+  the evidence = trains the Decide layer), `/suppress`, `/act`; `GET /actions/available`;
+  `GET`/`DELETE /suppressions`. `_overview` now keeps acknowledged (in-progress) alerts visible.
+- `dashboard/index.html`: click a row → slide-in **case drawer** — meta, decision toolbar
+  (Acknowledge/Assign/True-positive/False-positive/Suppress/Note/Close + Response:
+  Ticket/Webhook/Disable-account/Step-up), AI-triage (on demand), evidence table, subject
+  outcome history, response actions, and the case audit trail. Esc/backdrop closes.
+- Design principles carried through: analyst decision is authoritative + feeds back to improve
+  the system; LLM stays advisory; posture-changing actions are safe stubs (no attack surface).
+- Tests: `tests/test_decision_layer.py` now 17 (added drill-down, ack/assign/note journal, TP
+  resolution labels evidence, suppression blocks re-alert, manual-action stub recorded).
+- Exhibit: `exhibits/build_exhibit17.py` → "Exhibit 17 Analyst Case-Management Workflow.docx".
+- Bookmarked next: `docs/browser_control_plan.md` — make the whole project configurable/runnable
+  from the browser (settings menu for hard-coded limits, run compliance audit/scanner from the
+  page). Deferred to a fresh session (usage-limit checkpoint).
+
 ## 2026-07-12 — Live monitoring dashboard (SSE) replaces Swagger
 
 Built a real-time operations console served at `/` (Swagger moved to background at /docs) so the

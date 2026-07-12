@@ -25,8 +25,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import actions
-from verdict_store import (get_alert, recent_alert_exists, record_alert, recent_verdicts,
-                           subject_outcome_history)
+from verdict_store import (get_alert, is_suppressed, recent_alert_exists, record_alert,
+                           recent_verdicts, subject_outcome_history)
 
 
 def _int(env, default):
@@ -82,6 +82,8 @@ def evaluate(now: Optional[datetime] = None) -> list[int]:
     for subject, vs in by_subject.items():
         if len(vs) < IDENTITY_BURST_MIN:
             continue
+        if is_suppressed(subject, "identity"):
+            continue  # analyst-allowlisted subject (e.g. a known-good service account)
         if recent_alert_exists("identity_burst", subject, since):
             continue
         severity = _weight_severity("high", subject, "identity")
@@ -114,6 +116,8 @@ def evaluate(now: Optional[datetime] = None) -> list[int]:
             key = v["subject"]
         else:
             continue
+        if is_suppressed(key, v["model"]):
+            continue  # analyst-allowlisted subject
         if recent_alert_exists("high_severity", key, since):
             continue
         created.append(record_alert(
