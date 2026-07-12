@@ -8,5 +8,10 @@ exhibits/
 demo/
 *.docx
 *.ipynb
+# Multi-GB raw datasets are never used by the image (the Dockerfile only COPYs
+# models/regmap-embedder and specific data/processed artifacts) — keep them out of
+# the build context so builds don't transfer gigabytes.
+data/raw/
+data/*.db
 !models/regmap-embedder
 !data/processed/training_pairs.csv
