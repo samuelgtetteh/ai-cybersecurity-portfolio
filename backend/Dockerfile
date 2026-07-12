@@ -5,6 +5,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# nmap binary powers SecureScan's optional high-fidelity engine (service/version + CPE). The
+# socket engine works without it, but the image ships nmap so the richer engine is available.
+RUN apt-get update && apt-get install -y --no-install-recommends nmap \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY backend/requirements.txt backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
@@ -18,6 +23,8 @@ COPY backend/policy.py backend/policy.py
 COPY backend/actions.py backend/actions.py
 COPY backend/ai_triage.py backend/ai_triage.py
 COPY backend/llm_client.py backend/llm_client.py
+COPY backend/scanner_api.py backend/scanner_api.py
+COPY backend/securescan backend/securescan
 COPY backend/dashboard backend/dashboard
 COPY models/regmap-embedder models/regmap-embedder
 COPY data/processed/training_pairs.csv data/processed/training_pairs.csv

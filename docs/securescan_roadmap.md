@@ -1,6 +1,39 @@
 # Bookmark: SecureScan + Integrated-Platform Roadmap
 
-**Status: BOOKMARKED 2026-07-12 — reviewed, not started. Do not begin until the user says so.**
+**Status: P1 BUILT & DEPLOYED 2026-07-12 (nmap→NVD, platform-integrated). P2–P5 pending.**
+
+## ⚠️ Pre-existing scanner code to reconcile — `control-advisor/scanner/`
+While building P1 I found an EXISTING scanner package at `control-advisor/scanner/` with:
+`network_scan.py`, `cloud_scan.py`, `control_mapper.py` (looks like CVE/finding→control — overlaps
+our P3!), `environment_detect.py`, `mac_lookup.py`, `baseline_controls.py`, `interview.py` /
+`llm_interview.py`, `semantic_answer.py`, `docx_report.py`/`xlsx_report.py`/`report_export.py`.
+This is likely earlier work toward the same tool (standalone/notebook-oriented, not wired to the
+API). **Our P1 is a separate, platform-integrated package (`backend/securescan/`) named to avoid a
+name collision** (both can't be `scanner` on the path). **TODO before P2/P3:** review
+control-advisor/scanner and decide what to port/reuse — especially `control_mapper.py` and
+`baseline_controls.py` (P3/P2), `cloud_scan.py`/`environment_detect.py` (the cloud engines from the
+tooling answer), and the report exporters. Don't duplicate what's already there.
+
+---
+
+## P1 — DONE (backend/securescan/, mounted at /scan)
+- Pluggable engines: `socket` (pure-Python connect scan, default, no binary — runs in any cloud
+  container) + optional `nmap` (service/version + CPE; installed in the image).
+- `authz.py` guard: loopback/private allowlist by default; `ALLOWED_SCAN_TARGETS` to extend;
+  `SCAN_ALLOW_ANY=1` = deliberate opt-in for cloud "scan any environment it's called into".
+- `nvd.py`: NVD 2.0 client, on-disk cache, polite rate-limit, optional `NVD_API_KEY`, CVSS
+  v3.1/3.0/2 parsing, best-effort (never raises → works offline).
+- `cpe.py`: service→CPE (2.2→2.3) / keyword query builder.
+- `discovery.py`: authz→discover→enrich→report; `record_report` writes findings to the verdict
+  store as `model="scan"` (flagged if host max CVSS ≥ 7) so scans appear in the live dashboard.
+- API `backend/scanner_api.py`: `POST /scan`, `GET /scan/engines`, `GET /scan/authorize`.
+- Tests `tests/test_scanner.py` (9): authz, socket scan on a live listener, CPE/NVD parse,
+  enrichment flagging, API + 403. Notebook `notebooks/10_asset_cve_scan.ipynb`.
+- Docker: image installs `nmap` + `python-nmap` + `requests`; COPYs `backend/securescan`.
+
+---
+
+## (original review) — do not begin P2+ until the user says so.
 This captures the shared "SecureScan" tool vision and the "integrated platform / real-world
 applications" narrative, mapped against what already exists in this repo, so we can work through
 it phase by phase later (same cadence as the three papers: a working artifact per phase).

@@ -4,6 +4,33 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-12 — SecureScan Phase 1 (asset discovery + CVE mapping), platform-integrated
+
+New tool `backend/securescan/` + `/scan` API: discover open ports/services on an authorized host,
+map each service to CVEs (NVD), record findings into the same verdict trail as the detectors
+(`model="scan"`). Built per docs/securescan_roadmap.md P1.
+- **Pluggable engines** (`securescan/engines/`): `socket` (pure-Python TCP connect scan — default,
+  NO external binary, runs in any cloud container, low-noise) + optional `nmap` (service/version +
+  CPE; installed in the image, auto-selected when present).
+- **`authz.py`**: scans restricted to loopback/private by default; `ALLOWED_SCAN_TARGETS` extends;
+  `SCAN_ALLOW_ANY=1` is the deliberate opt-in for a cloud deploy meant to "scan any environment it
+  is called into". Unauthorized target → 403 (never scanned).
+- **`nvd.py`**: NVD 2.0 client with on-disk cache, polite rate-limit, optional `NVD_API_KEY`,
+  CVSS v3.1/3.0/2 parsing; best-effort (never raises → degrades offline).
+- **`cpe.py`** (CPE 2.2→2.3 / keyword query), **`discovery.py`** (authz→discover→enrich→report;
+  `record_report` → verdict store, flagged if host max CVSS ≥ 7).
+- **API** `backend/scanner_api.py` mounted in app.py: `POST /scan`, `GET /scan/engines`,
+  `GET /scan/authorize`. Tests `tests/test_scanner.py` (9). Notebook `10_asset_cve_scan.ipynb`.
+- Dockerfile installs nmap + python-nmap + requests; COPYs `backend/securescan`.
+- Answered the user's tooling question first (low-noise/cloud-appropriate scanning: cloud-API
+  inventory, SBOM/agent, passive, lighter active scanners, OSV/KEV/EPSS enrichment) — recommended
+  pluggable engines; built socket+nmap now, others slot in later.
+- ⚠️ FOUND pre-existing `control-advisor/scanner/` (network_scan/cloud_scan/control_mapper/…) —
+  earlier scanning work to reconcile before P2/P3 (see roadmap doc); our package renamed
+  `securescan` to avoid the name collision.
+- Full suite: 52 pass. Deployed: image rebuilt (adds nmap) + RedMap recreated; `/scan` verified
+  live. Bookmarked BC.4 (File/Edit/View/Settings menu + user login/auth).
+
 ## 2026-07-12 — BC.1: live settings menu (personalize limits from the browser)
 
 Executed BC.1 of the browser-control plan: users can now retune the app's hard-coded limits from
