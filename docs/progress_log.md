@@ -4,6 +4,22 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-12 — Native Windows run for true physical-LAN scanning (Docker can't give a LAN IP)
+
+User asked to give the Docker container the same IP as the physical LAN. That is NOT possible on
+Docker Desktop for Windows (4.80, WSL2) over Wi-Fi: containers run in a NAT'd Linux VM; macvlan
+(the only way to put a container on the physical L2) is unsupported on Docker Desktop and doesn't
+work over Wi-Fi. TCP scanning works via NAT, but no LAN IP / proper host discovery.
+- Fix: `run_native.ps1` — runs the backend natively on Windows via the existing venv (uvicorn
+  app:app from backend/). The process then has the host's real LAN identity.
+- PROVEN: native `/advisor/environment` reports 10.0.0.71 / 10.0.0.0/24, outbound 10.0.0.71,
+  docker:False (vs the container's 172.17.x); native scan of 10.0.0.1 → up, ports 53/80/443.
+- Launcher: `.\run_native.ps1 [-Port 2500] [-AllowAny]`; VERDICT_DB=data/verdicts_native.db (host),
+  binds 0.0.0.0 so it's reachable on the LAN. Stop the RedMap container first if sharing port 2500.
+  nmap.exe not on host → socket engine (works); install nmap for the richer engine (optional).
+- Alternative (not set up): WSL2 mirrored networking (.wslconfig networkingMode=mirrored) can make
+  WSL share the host IP; fiddly/version-dependent. Native run is the reliable path.
+
 ## 2026-07-12 — Scan fixes: physical/WAN scanning, network-type picker, modes, authz warning
 
 Diagnosed why scanning "wasn't working" and fixed the UX. Root causes: (1) WAN targets returned
