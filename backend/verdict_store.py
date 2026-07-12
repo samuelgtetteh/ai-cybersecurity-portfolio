@@ -79,6 +79,25 @@ _conn.execute(
     )
     """
 )
+_conn.execute(
+    """
+    CREATE TABLE IF NOT EXISTS alerts (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at     TEXT    NOT NULL,
+        rule           TEXT    NOT NULL,   -- 'identity_burst' | 'ics_sustained' | 'high_severity'
+        model          TEXT,
+        subject        TEXT,
+        severity       TEXT,               -- 'low' | 'medium' | 'high'
+        window_seconds INTEGER,
+        verdict_count  INTEGER,
+        verdict_ids    TEXT,               -- JSON list of contributing verdict ids
+        detail         TEXT,               -- JSON
+        status         TEXT    NOT NULL DEFAULT 'open'
+    )
+    """
+)
+_conn.execute("CREATE INDEX IF NOT EXISTS idx_a_rule_subject ON alerts(rule, subject, id)")
+_conn.execute("CREATE INDEX IF NOT EXISTS idx_a_status ON alerts(status, id)")
 _conn.execute("CREATE INDEX IF NOT EXISTS idx_v_model_id ON verdicts(model, id)")
 _conn.execute("CREATE INDEX IF NOT EXISTS idx_v_subject_id ON verdicts(subject, id)")
 _conn.execute("CREATE INDEX IF NOT EXISTS idx_v_flagged_id ON verdicts(flagged, id)")
@@ -287,3 +306,99 @@ def metrics(model: Optional[str] = None) -> dict:
         "specificity": _safe(tn, tn + fp),
         "accuracy": _safe(tp + tn, len(rows)),
     }
+
+
+# ------------------------------------------------------------------ Decide layer (C2)
+_ACOLS = ["id", "created_at", "rule", "model", "subject", "severity", "window_seconds",
+          "verdict_count", "verdict_ids", "detail", "status"]
+
+
+def recent_verdicts(since_iso: str, model: Optional[str] = None,
+                    flagged_only: bool = True) -> list[dict]:
+    """Verdicts recorded at/after since_iso (ISO-8601 UTC), oldest first — the window the
+    policy rules evaluate over."""
+    q = ("SELECT id, recorded_at, model, subject, flagged, score, ground_truth "
+         "FROM verdicts WHERE recorded_at >= ?")
+    args: list = [since_iso]
+    if model is not None:
+        q += " AND model = ?"; args.append(model)
+    if flagged_only:
+        q += " AND flagged = 1"
+    q += " ORDER BY id ASC"
+    cols = ["id", "recorded_at", "model", "subject", "flagged", "score", "ground_truth"]
+    with _lock:
+        rows = _conn.execute(q, args).fetchall()
+    out = []
+    for r in rows:
+        d = dict(zip(cols, r)); d["flagged"] = bool(d["flagged"]); out.append(d)
+    return out
+
+
+def subject_outcome_history(subject: Optional[str], model: Optional[str] = None) -> dict:
+    """How a subject's past flagged verdicts actually turned out (labelled ground truth):
+    lets the policy escalate confirmed-bad subjects and suppress chronic false positives."""
+    h = {"malicious": 0, "benign": 0}
+    if subject is None:
+        return h
+    q = "SELECT ground_truth, COUNT(*) FROM verdicts WHERE subject = ? AND ground_truth IS NOT NULL"
+    args: list = [subject]
+    if model is not None:
+        q += " AND model = ?"; args.append(model)
+    q += " GROUP BY ground_truth"
+    with _lock:
+        rows = _conn.execute(q, args).fetchall()
+    for gt, n in rows:
+        if gt in h:
+            h[gt] = n
+    return h
+
+
+def open_alert_exists(rule: str, subject: Optional[str], since_iso: str) -> bool:
+    """Whether an open alert for this (rule, subject) already exists within the window —
+    used to avoid re-alerting an ongoing burst. Makes evaluate() idempotent."""
+    q = "SELECT 1 FROM alerts WHERE rule = ? AND status = 'open' AND created_at >= ?"
+    args: list = [rule, since_iso]
+    if subject is None:
+        q += " AND subject IS NULL"
+    else:
+        q += " AND subject = ?"; args.append(subject)
+    q += " LIMIT 1"
+    with _lock:
+        return _conn.execute(q, args).fetchone() is not None
+
+
+def record_alert(rule: str, model: Optional[str], subject: Optional[str], severity: str,
+                 window_seconds: int, verdict_ids: list, detail: Optional[dict] = None) -> int:
+    with _lock:
+        cur = _conn.execute(
+            "INSERT INTO alerts (created_at, rule, model, subject, severity, window_seconds, "
+            "verdict_count, verdict_ids, detail, status) VALUES (?,?,?,?,?,?,?,?,?, 'open')",
+            (_now(), rule, model, subject, severity, window_seconds, len(verdict_ids),
+             json.dumps(verdict_ids), json.dumps(detail) if detail is not None else None),
+        )
+        _conn.commit()
+        return cur.lastrowid
+
+
+def query_alerts(status: Optional[str] = None, model: Optional[str] = None,
+                 limit: int = 100) -> list[dict]:
+    q = f"SELECT {', '.join(_ACOLS)} FROM alerts"
+    conds, args = [], []
+    if status is not None:
+        conds.append("status = ?"); args.append(status)
+    if model is not None:
+        conds.append("model = ?"); args.append(model)
+    if conds:
+        q += " WHERE " + " AND ".join(conds)
+    q += " ORDER BY id DESC LIMIT ?"; args.append(int(limit))
+    with _lock:
+        rows = _conn.execute(q, args).fetchall()
+    out = []
+    for r in rows:
+        d = dict(zip(_ACOLS, r))
+        if d.get("verdict_ids"):
+            d["verdict_ids"] = json.loads(d["verdict_ids"])
+        if d.get("detail"):
+            d["detail"] = json.loads(d["detail"])
+        out.append(d)
+    return out

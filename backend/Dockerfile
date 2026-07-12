@@ -13,6 +13,7 @@ COPY backend/identity_api.py backend/identity_api.py
 COPY backend/ics_api.py backend/ics_api.py
 COPY backend/verdict_store.py backend/verdict_store.py
 COPY backend/decision_api.py backend/decision_api.py
+COPY backend/policy.py backend/policy.py
 COPY models/regmap-embedder models/regmap-embedder
 COPY data/processed/training_pairs.csv data/processed/training_pairs.csv
 COPY data/processed/isolation_forest_model.pkl data/processed/isolation_forest_model.pkl
