@@ -16,8 +16,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+import ai_triage
 import policy
-from verdict_store import (close_alert, metrics, query_actions, query_alerts,
+from verdict_store import (close_alert, get_alert, metrics, query_actions, query_alerts,
                            query_requests, query_verdicts, set_ground_truth, stats)
 
 router = APIRouter(prefix="/decision", tags=["decision"])
@@ -110,6 +111,17 @@ def close(alert_id: int):
     if not close_alert(alert_id):
         raise HTTPException(status_code=404, detail=f"no alert with id {alert_id}")
     return {"alert_id": alert_id, "status": "closed"}
+
+
+@router.get("/alerts/{alert_id}/triage")
+def alert_triage(alert_id: int):
+    """AI triage (Track E): a concise analyst summary + the most relevant compliance controls
+    for this alert (RAG over the corpus; LLM-written when the local model is available, else a
+    templated summary). Heavy models load lazily on first call."""
+    alert = get_alert(alert_id)
+    if alert is None:
+        raise HTTPException(status_code=404, detail=f"no alert with id {alert_id}")
+    return {"alert_id": alert_id, **ai_triage.triage(alert)}
 
 
 @router.get("/health")
