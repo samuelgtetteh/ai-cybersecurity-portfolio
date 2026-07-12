@@ -16,8 +16,10 @@ Added a FIFO cap so the high-volume tables keep only the most recent N rows, old
 - Eviction never affects detection: metrics/Decide use a recent window far smaller than any cap.
 - Verified: pytest FIFO test (trims to cap, keeps newest, evicts oldest) — 33 tests pass; manual run
   of 500 inserts at cap=50 held the table at exactly 50 (ids 451-500).
-- NOTE: takes effect on the LIVE monitor only after RedMap is rebuilt+recreated with this code; the
-  default 100k cap doesn't shrink the current ~24.5k trail (set MAX_VERDICTS lower to bound tighter).
+- DEPLOYED 2026-07-12: RedMap rebuilt + recreated with `--restart unless-stopped` and the
+  `redmap_verdicts` volume; retention is live (caps shown in /decision/stats), the ~25.7k trail was
+  preserved, and the container now also serves the full decision layer (triage + reassess). The
+  default 100k cap bounds future growth (doesn't shrink 25.7k); set MAX_VERDICTS lower to bound tighter.
 
 ## 2026-07-12 — Decision layer, Phase E2: LLM triage prioritization + shared sidecar
 
