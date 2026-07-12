@@ -121,3 +121,31 @@ def test_actions_fired_for_alert_and_close(client):
     # closed alert no longer appears in the open queue
     open_ids = [a["id"] for a in client.get("/decision/alerts?status=open&auto_evaluate=false").json()]
     assert aid not in open_ids
+
+
+# --- E2: LLM triage prioritization (deterministic path; LLM disabled in tests) -----
+
+def test_new_alert_has_default_priority_from_severity(client):
+    # a fresh burst subject -> a high-severity alert should get the deterministic default
+    user = "test-prio@DOM1"
+    for i in range(12):
+        _login(client, user, f"C96{i:02d}", suspicious=True)
+    client.post("/decision/evaluate")
+    alerts = client.get("/decision/alerts?limit=500&auto_evaluate=false").json()
+    mine = [a for a in alerts if a["rule"] == "identity_burst" and a["subject"] == user]
+    assert mine and mine[0]["priority"] == 4        # high -> default priority 4
+    # the queue is ordered by priority (non-increasing)
+    prios = [a.get("priority") or 0 for a in alerts]
+    assert prios == sorted(prios, reverse=True)
+
+
+def test_reassess_is_advisory_and_clamped(client):
+    # with the LLM disabled, reassess returns the deterministic default and never drops a
+    # high-severity alert below its floor.
+    user = "test-prio@DOM1"
+    alerts = client.get("/decision/alerts?limit=500&auto_evaluate=false").json()
+    aid = next(a["id"] for a in alerts if a["subject"] == user and a["rule"] == "identity_burst")
+    r = client.post(f"/decision/alerts/{aid}/reassess").json()
+    assert r["llm_used"] is False                   # LLM off in tests
+    assert r["priority"] >= 3                        # high-severity floor respected
+    assert client.post("/decision/alerts/999999/reassess").status_code == 404

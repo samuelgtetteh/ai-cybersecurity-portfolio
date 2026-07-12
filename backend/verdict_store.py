@@ -92,7 +92,10 @@ _conn.execute(
         verdict_count  INTEGER,
         verdict_ids    TEXT,               -- JSON list of contributing verdict ids
         detail         TEXT,               -- JSON
-        status         TEXT    NOT NULL DEFAULT 'open'
+        status         TEXT    NOT NULL DEFAULT 'open',
+        priority       INTEGER,            -- 1-5 (5=most urgent); default from severity
+        disposition    TEXT,               -- LLM advisory: escalate|monitor|likely_false_positive
+        rationale      TEXT                -- LLM advisory rationale
     )
     """
 )
@@ -125,6 +128,10 @@ def _ensure_columns():
                       ("path", "TEXT"), ("ground_truth", "TEXT"), ("labeled_at", "TEXT")]:
         if col not in have:
             _conn.execute(f"ALTER TABLE verdicts ADD COLUMN {col} {decl}")
+    have_a = {r[1] for r in _conn.execute("PRAGMA table_info(alerts)")}
+    for col, decl in [("priority", "INTEGER"), ("disposition", "TEXT"), ("rationale", "TEXT")]:
+        if col not in have_a:
+            _conn.execute(f"ALTER TABLE alerts ADD COLUMN {col} {decl}")
 
 
 _ensure_columns()
@@ -323,7 +330,10 @@ def metrics(model: Optional[str] = None) -> dict:
 
 # ------------------------------------------------------------------ Decide layer (C2)
 _ACOLS = ["id", "created_at", "rule", "model", "subject", "severity", "window_seconds",
-          "verdict_count", "verdict_ids", "detail", "status"]
+          "verdict_count", "verdict_ids", "detail", "status", "priority", "disposition", "rationale"]
+
+# deterministic default priority from severity (1-5, 5 = most urgent), set at alert creation
+_SEVERITY_PRIORITY = {"high": 4, "medium": 2, "low": 1}
 
 
 def recent_verdicts(since_iso: str, model: Optional[str] = None,
@@ -384,15 +394,29 @@ def recent_alert_exists(rule: str, subject: Optional[str], since_iso: str) -> bo
 
 def record_alert(rule: str, model: Optional[str], subject: Optional[str], severity: str,
                  window_seconds: int, verdict_ids: list, detail: Optional[dict] = None) -> int:
+    priority = _SEVERITY_PRIORITY.get(severity, 2)  # deterministic default; LLM may refine later
     with _lock:
         cur = _conn.execute(
             "INSERT INTO alerts (created_at, rule, model, subject, severity, window_seconds, "
-            "verdict_count, verdict_ids, detail, status) VALUES (?,?,?,?,?,?,?,?,?, 'open')",
+            "verdict_count, verdict_ids, detail, status, priority) "
+            "VALUES (?,?,?,?,?,?,?,?,?, 'open', ?)",
             (_now(), rule, model, subject, severity, window_seconds, len(verdict_ids),
-             json.dumps(verdict_ids), json.dumps(detail) if detail is not None else None),
+             json.dumps(verdict_ids), json.dumps(detail) if detail is not None else None, priority),
         )
         _conn.commit()
         return cur.lastrowid
+
+
+def set_disposition(alert_id: int, priority: int, disposition: Optional[str],
+                    rationale: Optional[str]) -> bool:
+    """Store the LLM's advisory prioritization on an alert (from ai_triage.assess)."""
+    with _lock:
+        cur = _conn.execute(
+            "UPDATE alerts SET priority = ?, disposition = ?, rationale = ? WHERE id = ?",
+            (priority, disposition, rationale, alert_id),
+        )
+        _conn.commit()
+        return cur.rowcount > 0
 
 
 def query_alerts(status: Optional[str] = None, model: Optional[str] = None,
@@ -405,7 +429,7 @@ def query_alerts(status: Optional[str] = None, model: Optional[str] = None,
         conds.append("model = ?"); args.append(model)
     if conds:
         q += " WHERE " + " AND ".join(conds)
-    q += " ORDER BY id DESC LIMIT ?"; args.append(int(limit))
+    q += " ORDER BY COALESCE(priority, 0) DESC, id DESC LIMIT ?"; args.append(int(limit))
     with _lock:
         rows = _conn.execute(q, args).fetchall()
     out = []

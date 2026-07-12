@@ -19,7 +19,8 @@ from pydantic import BaseModel
 import ai_triage
 import policy
 from verdict_store import (close_alert, get_alert, metrics, query_actions, query_alerts,
-                           query_requests, query_verdicts, set_ground_truth, stats)
+                           query_requests, query_verdicts, set_disposition, set_ground_truth,
+                           stats)
 
 router = APIRouter(prefix="/decision", tags=["decision"])
 
@@ -111,6 +112,32 @@ def close(alert_id: int):
     if not close_alert(alert_id):
         raise HTTPException(status_code=404, detail=f"no alert with id {alert_id}")
     return {"alert_id": alert_id, "status": "closed"}
+
+
+@router.post("/alerts/{alert_id}/reassess")
+def reassess_alert(alert_id: int):
+    """LLM-assisted (advisory) re-prioritization of one alert. Stores {priority, disposition,
+    rationale}; priority is clamped to the severity floor. Kept out of the scoring/evaluate hot
+    path — invoke explicitly (analyst action or a scheduled sweep)."""
+    alert = get_alert(alert_id)
+    if alert is None:
+        raise HTTPException(status_code=404, detail=f"no alert with id {alert_id}")
+    a = ai_triage.assess(alert)
+    set_disposition(alert_id, a["priority"], a["disposition"], a["rationale"])
+    return {"alert_id": alert_id, **a}
+
+
+@router.post("/reassess")
+def reassess_open(limit: int = Query(50, ge=1, le=500)):
+    """Reassess the open-alert queue in bulk (advisory). Returns the new priority/disposition per
+    alert. Note: with an in-process LLM this is slow for many alerts; a sidecar LLM makes it cheap."""
+    updated = []
+    for alert in query_alerts(status="open", limit=limit):
+        a = ai_triage.assess(alert)
+        set_disposition(alert["id"], a["priority"], a["disposition"], a["rationale"])
+        updated.append({"alert_id": alert["id"], "priority": a["priority"],
+                        "disposition": a["disposition"], "llm_used": a["llm_used"]})
+    return {"reassessed": len(updated), "alerts": updated}
 
 
 @router.get("/alerts/{alert_id}/triage")

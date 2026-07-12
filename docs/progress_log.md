@@ -4,6 +4,26 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-12 — Decision layer, Phase E2: LLM triage prioritization + shared sidecar
+
+Makes the LLM *improve how decisions are handled* (queue ordering), safely and via a shared model.
+- **Principle:** LLM is ADVISORY, never authoritative (hallucination + prompt-injection risk). It
+  re-ranks/labels; deterministic rules + humans enforce. Kept OUT of the scoring/evaluate hot path.
+- Every alert gets a deterministic default priority from severity at creation (high=4/med=2/low=1,
+  scale 1-5); the queue orders by priority. The LLM REFINES priority + disposition
+  (escalate|monitor|likely_false_positive) + rationale on demand via `POST /decision/alerts/{id}/
+  reassess` (and batch `/decision/reassess`), CLAMPED to a severity floor so it can't bury a high alert.
+- `backend/llm_client.py`: single LLM access point — prefers the sidecar (`LLM_SERVICE_URL`), falls
+  back to in-process Qwen; `ai_triage` refactored onto it and given `assess(alert)` (RAG context +
+  subject-outcome history + validated/clamped LLM JSON).
+- **`llm-service/`**: a shared sidecar hosting ONE Qwen instance behind `POST /generate`. Per the
+  user's steer, the existing model is **mounted** (not copied/re-downloaded); one instance is meant to
+  serve the whole project (backend now; Control Advisor can adopt it later).
+- Verified: 32-test suite green (LLM disabled in tests → deterministic default + clamp); local-LLM
+  reassess produced disposition=escalate with priority clamped to the high floor. Dockerfiles updated
+  (backend COPYs llm_client.py; sidecar mounts the model). Deploy of the sidecar container is the
+  optional heavy last step (commands in docs/decision_layer_plan.md).
+
 ## 2026-07-12 — Decision layer, Phase E: AI triage (RAG + local LLM) — Track C+E complete
 
 - `backend/ai_triage.py` + `GET /decision/alerts/{id}/triage`: for a given alert, retrieve the most
