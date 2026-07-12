@@ -18,9 +18,9 @@ from pydantic import BaseModel
 
 import ai_triage
 import policy
-from verdict_store import (close_alert, get_alert, metrics, query_actions, query_alerts,
-                           query_requests, query_verdicts, set_disposition, set_ground_truth,
-                           stats)
+from verdict_store import (close_alert, enforce_retention, get_alert, metrics, query_actions,
+                           query_alerts, query_requests, query_verdicts, set_disposition,
+                           set_ground_truth, stats)
 
 router = APIRouter(prefix="/decision", tags=["decision"])
 
@@ -47,8 +47,15 @@ def get_requests(limit: int = Query(100, ge=1, le=1000)):
 
 @router.get("/stats")
 def get_stats():
-    """Coverage totals: verdicts, flagged, labelled, audited requests, per model."""
+    """Coverage totals: verdicts, flagged, labelled, audited requests, per model, + retention caps."""
     return stats()
+
+
+@router.post("/retention/enforce")
+def retention_enforce():
+    """Immediately trim the log tables to their FIFO caps (oldest evicted). Trimming also happens
+    automatically on insert (batched) and at startup; this is a manual/on-demand trigger."""
+    return enforce_retention()
 
 
 @router.get("/metrics")
