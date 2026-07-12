@@ -137,6 +137,19 @@ _conn.execute(
     """
 )
 _conn.execute("CREATE INDEX IF NOT EXISTS idx_sup_subject ON suppressions(subject, id)")
+# Runtime settings: user-editable overrides of the operational limits/thresholds that were
+# previously frozen from environment variables at import. Only OVERRIDES are stored (one row per
+# changed key); an absent key falls back to its env/coded default, so "reset to defaults" is just
+# deleting the row. settings.py owns the registry (types, ranges, labels); this table is storage.
+_conn.execute(
+    """
+    CREATE TABLE IF NOT EXISTS settings (
+        key        TEXT PRIMARY KEY,
+        value      TEXT,
+        updated_at TEXT
+    )
+    """
+)
 _conn.execute(
     """
     CREATE TABLE IF NOT EXISTS actions (
@@ -203,6 +216,81 @@ RETENTION_TRIM_EVERY = _int_env("RETENTION_TRIM_EVERY", 100)
 _ins_since_trim: dict = {"verdicts": 0, "requests": 0, "actions": 0}
 
 
+# --- runtime settings store (live overrides) ------------------------------------------
+# A read-mostly cache of the settings table. Reads are LOCK-FREE (a plain dict lookup under the
+# GIL): the cache is preloaded at import and only ever replaced wholesale on write (atomic pointer
+# swap), so hot-path callers (insert-time trim, policy.evaluate) can read a setting even while
+# holding _lock without risking a deadlock on the non-reentrant Lock.
+_settings_cache: dict = {}
+
+
+def _reload_settings_cache_locked() -> None:
+    global _settings_cache
+    rows = _conn.execute("SELECT key, value FROM settings").fetchall()
+    _settings_cache = {k: v for k, v in rows}
+
+
+def get_setting(key: str, default=None):
+    """Current raw (string) override for `key`, or `default` if unset. Lock-free."""
+    return _settings_cache.get(key, default)
+
+
+def get_setting_int(key: str, default: int) -> int:
+    try:
+        return int(_settings_cache[key])
+    except (KeyError, TypeError, ValueError):
+        return default
+
+
+def get_setting_float(key: str, default: float) -> float:
+    try:
+        return float(_settings_cache[key])
+    except (KeyError, TypeError, ValueError):
+        return default
+
+
+def get_setting_bool(key: str, default: bool) -> bool:
+    raw = _settings_cache.get(key)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() not in ("0", "false", "no", "off", "")
+
+
+def set_setting_values(pairs: dict) -> None:
+    """Persist raw string overrides (one row per key) and refresh the cache."""
+    with _lock:
+        for k, v in pairs.items():
+            _conn.execute(
+                "INSERT INTO settings (key, value, updated_at) VALUES (?,?,?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                (k, None if v is None else str(v), _now()))
+        _conn.commit()
+        _reload_settings_cache_locked()
+
+
+def reset_settings(keys: Optional[list] = None) -> None:
+    """Drop overrides (all keys, or a subset) so they revert to their coded/env defaults."""
+    with _lock:
+        if keys is None:
+            _conn.execute("DELETE FROM settings")
+        else:
+            for k in keys:
+                _conn.execute("DELETE FROM settings WHERE key = ?", (k,))
+        _conn.commit()
+        _reload_settings_cache_locked()
+
+
+def all_settings_raw() -> dict:
+    """A copy of the current raw overrides (key -> string)."""
+    return dict(_settings_cache)
+
+
+# retention key -> (settings key, coded default) so a live cap change takes effect immediately
+_RETENTION = {"verdicts": ("MAX_VERDICTS", MAX_VERDICTS),
+              "requests": ("MAX_REQUESTS", MAX_REQUESTS),
+              "actions": ("MAX_ACTIONS", MAX_ACTIONS)}
+
+
 def _trim_locked(table: str, cap: int) -> None:
     """Delete oldest rows so `table` keeps at most `cap` rows (FIFO by autoincrement id).
     Assumes the lock is held; the caller commits."""
@@ -213,12 +301,15 @@ def _trim_locked(table: str, cap: int) -> None:
         )
 
 
-def _auto_trim_locked(table: str, cap: int) -> None:
-    """Batched FIFO trim invoked on insert — trims once every RETENTION_TRIM_EVERY inserts."""
+def _auto_trim_locked(table: str) -> None:
+    """Batched FIFO trim invoked on insert — trims once every RETENTION_TRIM_EVERY inserts.
+    Reads the (possibly user-overridden) cap and cadence live from the settings cache."""
+    every = get_setting_int("RETENTION_TRIM_EVERY", RETENTION_TRIM_EVERY)
     _ins_since_trim[table] = _ins_since_trim.get(table, 0) + 1
-    if _ins_since_trim[table] >= RETENTION_TRIM_EVERY:
+    if _ins_since_trim[table] >= max(1, every):
         _ins_since_trim[table] = 0
-        _trim_locked(table, cap)
+        key, coded = _RETENTION[table]
+        _trim_locked(table, get_setting_int(key, coded))
 
 
 def _now() -> str:
@@ -253,7 +344,7 @@ def record_verdict(model: str, flagged: bool, score: Optional[float],
              None if score is None else float(score),
              json.dumps(detail) if detail is not None else None),
         )
-        _auto_trim_locked("verdicts", MAX_VERDICTS)
+        _auto_trim_locked("verdicts")
         _conn.commit()
         return cur.lastrowid
 
@@ -291,7 +382,7 @@ def record_request(method: str, path: str, client: Optional[str],
                 "VALUES (?,?,?,?,?,?)",
                 (_now(), method, path, client, status, latency_ms),
             )
-            _auto_trim_locked("requests", MAX_REQUESTS)
+            _auto_trim_locked("requests")
             _conn.commit()
             return cur.lastrowid
     except Exception:
@@ -386,9 +477,9 @@ def enforce_retention(max_verdicts: Optional[int] = None, max_requests: Optional
     """Immediately trim the high-volume log tables to their caps (FIFO, oldest evicted). Uses the
     env-configured caps unless overridden. Returns per-table before/after/evicted counts. Run once
     at import so an already-oversized DB is bounded on startup."""
-    caps = {"verdicts": MAX_VERDICTS if max_verdicts is None else max_verdicts,
-            "requests": MAX_REQUESTS if max_requests is None else max_requests,
-            "actions": MAX_ACTIONS if max_actions is None else max_actions}
+    caps = {"verdicts": get_setting_int("MAX_VERDICTS", MAX_VERDICTS) if max_verdicts is None else max_verdicts,
+            "requests": get_setting_int("MAX_REQUESTS", MAX_REQUESTS) if max_requests is None else max_requests,
+            "actions": get_setting_int("MAX_ACTIONS", MAX_ACTIONS) if max_actions is None else max_actions}
     out = {}
     with _lock:
         for table, cap in caps.items():
@@ -413,13 +504,18 @@ def stats() -> dict:
         "verdicts": total, "flagged": flagged, "labeled": labeled,
         "audited_requests": reqs,
         "by_model": {m: {"count": c, "flagged": int(f)} for m, c, f in by},
-        "retention": {"max_verdicts": MAX_VERDICTS, "max_requests": MAX_REQUESTS,
-                      "max_actions": MAX_ACTIONS, "trim_every": RETENTION_TRIM_EVERY},
+        "retention": {"max_verdicts": get_setting_int("MAX_VERDICTS", MAX_VERDICTS),
+                      "max_requests": get_setting_int("MAX_REQUESTS", MAX_REQUESTS),
+                      "max_actions": get_setting_int("MAX_ACTIONS", MAX_ACTIONS),
+                      "trim_every": get_setting_int("RETENTION_TRIM_EVERY", RETENTION_TRIM_EVERY)},
         "db_path": str(DB_PATH),
     }
 
 
-# Bound an already-large DB on startup (FIFO), so restarting the backend enforces the caps.
+# Preload the settings cache, then bound an already-large DB on startup (FIFO) using the
+# effective (possibly user-overridden) caps, so restarting the backend enforces current limits.
+with _lock:
+    _reload_settings_cache_locked()
 enforce_retention()
 
 
@@ -731,7 +827,7 @@ def record_action(alert_id: int, action_type: str, status: str,
             (_now(), alert_id, action_type, status,
              json.dumps(detail) if detail is not None else None),
         )
-        _auto_trim_locked("actions", MAX_ACTIONS)
+        _auto_trim_locked("actions")
         _conn.commit()
         return cur.lastrowid
 

@@ -7,6 +7,7 @@ import torch
 from pathlib import Path
 import pandas as pd
 
+import settings
 from identity_api import router as identity_router
 from ics_api import router as ics_router
 from decision_api import router as decision_router
@@ -90,11 +91,11 @@ def map_control(request: QueryRequest, http_request: Request):
             hipaa_citation=hipaa_texts[idx][:200],  # truncate for readability
             score=round(float(cos_scores[idx]), 4)
         ))
-    # Record layer: a low top-1 similarity is a low-confidence mapping worth
-    # flagging (the same guardrail backend/event_simulator.py simulates).
+    # Record layer: a low top-1 similarity is a low-confidence mapping worth flagging (the same
+    # guardrail backend/event_simulator.py simulates). The cutoff is user-tunable (BC.1).
     top1 = results[0].score if results else 0.0
     http_request.state.verdict_id = record_verdict_safe(
-        model="regmap", flagged=top1 < 0.5, score=top1,
+        model="regmap", flagged=top1 < settings.get("REGMAP_FLAG_THRESHOLD"), score=top1,
         subject=None,
         detail={"query": request.nist_control.strip()[:200],
                 "top_citation": results[0].hipaa_citation if results else None},

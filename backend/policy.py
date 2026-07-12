@@ -19,49 +19,31 @@ Rules (all windowed on recorded_at):
 evaluate() is idempotent: an open alert for the same (rule, subject) within the window blocks a
 duplicate, so it is safe to call on every /decision/alerts read or after every verdict.
 """
-import os
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import actions
+import settings
 from verdict_store import (get_alert, is_suppressed, recent_alert_exists, record_alert,
                            recent_verdicts, subject_outcome_history)
 
-
-def _int(env, default):
-    try:
-        return int(os.environ.get(env, default))
-    except ValueError:
-        return default
-
-
-def _float(env, default):
-    try:
-        return float(os.environ.get(env, default))
-    except ValueError:
-        return default
-
-
-WINDOW_SECONDS = _int("DECISION_WINDOW_SECONDS", 300)
-IDENTITY_BURST_MIN = _int("IDENTITY_BURST_MIN", 3)     # flagged logins from one user -> burst
-ICS_SUSTAINED_MIN = _int("ICS_SUSTAINED_MIN", 3)       # flagged ICS ticks -> sustained event
-ICS_SEVERE_ERROR = _float("ICS_SEVERE_ERROR", 1.0)     # reconstruction error this high = severe
-IDENTITY_SEVERE = _float("IDENTITY_SEVERE", -0.1)      # IsolationForest score this low = severe
-SUPPRESS_MIN = _int("DECISION_SUPPRESS_MIN", 3)        # min labelled history to trust suppression
+# Thresholds are read LIVE from the settings store (settings.get) at evaluate() time, so a user
+# can retune the policy from the dashboard without a restart (BC.1). Defaults live in the registry.
 
 
 def _weight_severity(base: str, subject: Optional[str], model: str) -> Optional[str]:
     """Adjust a base severity by the subject's historical outcomes. Returns None to SUPPRESS
     (chronic false positive), or an escalated/de-escalated severity string."""
+    suppress_min = settings.get("DECISION_SUPPRESS_MIN")
     h = subject_outcome_history(subject, model)
     mal, ben = h["malicious"], h["benign"]
     total = mal + ben
-    if total >= SUPPRESS_MIN and mal == 0 and ben > 0:
+    if total >= suppress_min and mal == 0 and ben > 0:
         return None                       # consistently benign in the past -> suppress
     if mal > ben and mal > 0:
         return "high"                     # confirmed-bad history -> escalate
-    if total >= SUPPRESS_MIN and ben > mal:
+    if total >= suppress_min and ben > mal:
         return "low"                      # mostly benign -> de-escalate
     return base
 
@@ -69,8 +51,13 @@ def _weight_severity(base: str, subject: Optional[str], model: str) -> Optional[
 def evaluate(now: Optional[datetime] = None) -> list[int]:
     """Scan the trailing window, apply the rules, dedup against open alerts, and persist any
     new alerts. Returns the ids of alerts created on this call."""
+    window_seconds = settings.get("DECISION_WINDOW_SECONDS")
+    identity_burst_min = settings.get("IDENTITY_BURST_MIN")
+    ics_sustained_min = settings.get("ICS_SUSTAINED_MIN")
+    ics_severe_error = settings.get("ICS_SEVERE_ERROR")
+    identity_severe = settings.get("IDENTITY_SEVERE")
     now = now or datetime.now(timezone.utc)
-    since = (now - timedelta(seconds=WINDOW_SECONDS)).isoformat()
+    since = (now - timedelta(seconds=window_seconds)).isoformat()
     flagged = recent_verdicts(since, flagged_only=True)
     created: list[int] = []
 
@@ -80,7 +67,7 @@ def evaluate(now: Optional[datetime] = None) -> list[int]:
         if v["model"] == "identity" and v["subject"]:
             by_subject[v["subject"]].append(v)
     for subject, vs in by_subject.items():
-        if len(vs) < IDENTITY_BURST_MIN:
+        if len(vs) < identity_burst_min:
             continue
         if is_suppressed(subject, "identity"):
             continue  # analyst-allowlisted subject (e.g. a known-good service account)
@@ -90,18 +77,18 @@ def evaluate(now: Optional[datetime] = None) -> list[int]:
         if severity is None:
             continue  # suppressed as a chronic false positive
         created.append(record_alert(
-            "identity_burst", "identity", subject, severity, WINDOW_SECONDS,
+            "identity_burst", "identity", subject, severity, window_seconds,
             [v["id"] for v in vs],
-            detail={"reason": f"{len(vs)} flagged logins from {subject} within {WINDOW_SECONDS}s",
+            detail={"reason": f"{len(vs)} flagged logins from {subject} within {window_seconds}s",
                     "history": subject_outcome_history(subject, "identity")}))
 
     # rule 2: ics_sustained — ICS has no per-account subject; count flagged ICS in the window
     ics = [v for v in flagged if v["model"] == "ics"]
-    if len(ics) >= ICS_SUSTAINED_MIN and not recent_alert_exists("ics_sustained", None, since):
+    if len(ics) >= ics_sustained_min and not recent_alert_exists("ics_sustained", None, since):
         created.append(record_alert(
-            "ics_sustained", "ics", None, "high", WINDOW_SECONDS,
+            "ics_sustained", "ics", None, "high", window_seconds,
             [v["id"] for v in ics],
-            detail={"reason": f"{len(ics)} sustained ICS anomalies within {WINDOW_SECONDS}s"}))
+            detail={"reason": f"{len(ics)} sustained ICS anomalies within {window_seconds}s"}))
 
     # rule 3: high_severity — a single verdict with an extreme score, alerted immediately
     # (don't wait for N). Dedup key: identity by subject; ICS by a constant so a stream of
@@ -110,9 +97,9 @@ def evaluate(now: Optional[datetime] = None) -> list[int]:
         score = v["score"]
         if score is None:
             continue
-        if v["model"] == "ics" and score >= ICS_SEVERE_ERROR:
+        if v["model"] == "ics" and score >= ics_severe_error:
             key = "ics"
-        elif v["model"] == "identity" and v["subject"] and score <= IDENTITY_SEVERE:
+        elif v["model"] == "identity" and v["subject"] and score <= identity_severe:
             key = v["subject"]
         else:
             continue
@@ -121,7 +108,7 @@ def evaluate(now: Optional[datetime] = None) -> list[int]:
         if recent_alert_exists("high_severity", key, since):
             continue
         created.append(record_alert(
-            "high_severity", v["model"], key, "high", WINDOW_SECONDS, [v["id"]],
+            "high_severity", v["model"], key, "high", window_seconds, [v["id"]],
             detail={"score": score, "reason": "single verdict with an extreme anomaly score"}))
 
     # Act layer (C3): fire responders for each newly-created alert (inline, best-effort).

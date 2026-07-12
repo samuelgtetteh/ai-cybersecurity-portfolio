@@ -230,6 +230,45 @@ def test_manual_action_stub_is_recorded(client):
     assert "disable_account" in client.get("/decision/actions/available").json()["actions"]
 
 
+# --- Runtime settings (BC.1: personalize limits/thresholds from the browser) ---------
+
+def test_settings_describe_and_effective(client):
+    d = client.get("/decision/settings").json()
+    assert "groups" in d and "values" in d
+    groups = {g["group"] for g in d["groups"]}
+    assert "Log retention (FIFO caps)" in groups and "Detection policy" in groups
+    assert d["values"]["MAX_VERDICTS"] >= 0 and "IDENTITY_BURST_MIN" in d["values"]
+
+
+def test_settings_update_is_live_and_validated(client):
+    # a valid override takes effect immediately (visible in stats retention)
+    r = client.patch("/decision/settings", json={"values": {"MAX_VERDICTS": 4321}})
+    assert r.status_code == 200 and r.json()["values"]["MAX_VERDICTS"] == 4321
+    assert client.get("/decision/stats").json()["retention"]["max_verdicts"] == 4321
+    # out-of-range and unknown keys are rejected (422), nothing partially written
+    assert client.patch("/decision/settings", json={"values": {"IDENTITY_BURST_MIN": 0}}).status_code == 422
+    assert client.patch("/decision/settings", json={"values": {"NOPE": 1}}).status_code == 422
+    # reset restores the default
+    client.post("/decision/settings/reset", json={"keys": ["MAX_VERDICTS"]})
+    assert client.get("/decision/stats").json()["retention"]["max_verdicts"] != 4321
+
+
+def test_settings_change_retunes_policy_live(client):
+    # raising the burst threshold above the activity means no burst alert is raised — proving the
+    # policy reads the threshold live from settings rather than a frozen import-time constant.
+    user = "test-cfg@DOM1"
+    try:
+        client.patch("/decision/settings", json={"values": {"IDENTITY_BURST_MIN": 50}})
+        for i in range(12):
+            _login(client, user, f"CS{i:02d}", suspicious=True)
+        client.post("/decision/evaluate")
+        alerts = client.get("/decision/alerts?limit=500&auto_evaluate=false").json()
+        assert not [a for a in alerts if a["subject"] == user], "12 < 50 threshold: no burst expected"
+    finally:
+        client.post("/decision/settings/reset", json={"keys": ["IDENTITY_BURST_MIN"]})
+    assert client.get("/decision/settings").json()["values"]["IDENTITY_BURST_MIN"] == 3
+
+
 # --- Dashboard (live console) -----------------------------------------------------
 
 def test_dashboard_served_at_root(client):

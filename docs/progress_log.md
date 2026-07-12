@@ -4,6 +4,28 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-12 — BC.1: live settings menu (personalize limits from the browser)
+
+Executed BC.1 of the browser-control plan: users can now retune the app's hard-coded limits from
+the dashboard, applied live (no restart). The key refactor the plan called out is done — modules
+no longer freeze env values at import; they read a live settings store at point-of-use.
+- `backend/settings.py` (new): REGISTRY = single source of truth (type/range/label/help/default)
+  for retention caps, policy thresholds, REGMAP_FLAG_THRESHOLD, AI_TRIAGE_LLM toggle; get()/
+  effective()/update() (validated)/reset()/describe().
+- `backend/verdict_store.py`: `settings` table + LOCK-FREE cache (preloaded at import, atomic
+  swap on write → hot-path reads never deadlock the non-reentrant Lock); get_setting[_int/float/
+  bool], set_setting_values, reset_settings, all_settings_raw. Retention (_auto_trim_locked,
+  enforce_retention, stats) reads caps live.
+- `policy.py` reads thresholds live in evaluate()/_weight_severity; `app.py` reads the regmap
+  flag cutoff live; `llm_client.py` reads AI_TRIAGE_LLM live (`_local_enabled`).
+- API: GET /decision/settings (grouped+values), PATCH /decision/settings (validated, live),
+  POST /decision/settings/reset. UI: ⚙ header button → settings drawer (number inputs honour
+  min/max/step, bool = toggle, "overridden" markers, Save + Reset-all).
+- Tests: 20 pass (added describe/effective, live+validated update, live policy retune).
+- DEPLOYED: settings.py added to Dockerfile; image rebuilt; RedMap recreated; verified live
+  (PATCH MAX_VERDICTS→250k reflected in /stats, reset restored). docs/browser_control_plan.md
+  marked BC.1 DONE (BC.2 job runner + BC.3 full control plane remain).
+
 ## 2026-07-12 — Analyst case-management workflow (Tier 1+2) + Exhibit 17
 
 Turned the read-only alert queue (why/close) into a full human-in-the-loop case-management

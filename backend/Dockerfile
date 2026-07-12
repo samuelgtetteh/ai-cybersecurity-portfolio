@@ -12,6 +12,7 @@ COPY backend/app.py backend/app.py
 COPY backend/identity_api.py backend/identity_api.py
 COPY backend/ics_api.py backend/ics_api.py
 COPY backend/verdict_store.py backend/verdict_store.py
+COPY backend/settings.py backend/settings.py
 COPY backend/decision_api.py backend/decision_api.py
 COPY backend/policy.py backend/policy.py
 COPY backend/actions.py backend/actions.py

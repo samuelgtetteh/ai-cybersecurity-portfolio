@@ -89,6 +89,26 @@
   .trail .e{padding:7px 0;border-bottom:1px solid var(--line);font-size:12px}
   .trail .e .a{font-weight:700;text-transform:capitalize}.trail .e .m{color:var(--muted)}
   .triage{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13px}
+  /* --- settings panel --- */
+  #setpanel{position:fixed;top:0;right:0;height:100%;width:min(540px,100%);background:var(--panel);border-left:1px solid var(--line);
+    transform:translateX(100%);transition:transform .2s;z-index:22;display:flex;flex-direction:column}
+  #setpanel.show{transform:translateX(0)}
+  #setpanel .dhead{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--panel2)}
+  #setpanel .dhead h2{margin:0;font-size:15px}#setpanel .dhead .x{margin-left:auto;background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1}
+  #setpanel .dbody{overflow:auto;padding:6px 16px;flex:1}
+  .setgrp{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:16px 0 4px}
+  .setrow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+  .setrow .lab{font-size:13px}.setrow .lab .h{color:var(--muted);font-size:11px;display:block;margin-top:2px;font-weight:400}
+  .setrow .lab .ov{color:var(--warn);font-size:10px;margin-left:6px;text-transform:uppercase;letter-spacing:.4px}
+  .setrow input[type=number]{width:120px;background:var(--pill);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:6px 8px;font-size:13px;font-variant-numeric:tabular-nums}
+  .setrow input[type=number]:focus{outline:none;border-color:var(--accent)}
+  .switch{position:relative;width:42px;height:22px}.switch input{opacity:0;width:0;height:0}
+  .slider{position:absolute;cursor:pointer;inset:0;background:var(--line);border-radius:22px;transition:.15s}
+  .slider:before{content:"";position:absolute;height:16px;width:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.15s}
+  .switch input:checked+.slider{background:var(--accent)}.switch input:checked+.slider:before{transform:translateX(20px)}
+  .setfoot{display:flex;gap:8px;align-items:center;padding:12px 16px;border-top:1px solid var(--line);background:var(--panel2)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  #set-msg{font-size:12px;color:var(--ok)}
 </style>
 </head>
 <body>
@@ -101,6 +121,7 @@
   <div class="stat"><b id="s-alerts">–</b><span>open alerts</span></div>
   <div class="stat"><b id="s-db">–</b><span>log (used/cap)</span></div>
   <div class="stat"><b id="s-updated">–</b><span>updated</span></div>
+  <button class="btn" id="cfgbtn" title="settings — personalize limits & thresholds">⚙</button>
   <button class="btn" id="themebtn" title="toggle light / dark">☀</button>
   <a class="muted" href="/docs" title="raw API">API</a>
 </header>
@@ -127,8 +148,21 @@
   </div>
 </main>
 
+<!-- Settings panel: personalize the operational limits/thresholds (BC.1) -->
+<aside id="setpanel">
+  <div class="dhead"><h2>Settings</h2>
+    <span class="muted" style="font-size:12px">personalize limits &amp; thresholds</span>
+    <button class="x" onclick="closeSettings()">×</button></div>
+  <div class="dbody" id="set-body"></div>
+  <div class="setfoot">
+    <button class="btn primary" id="set-save" onclick="saveSettings()">Save changes</button>
+    <button class="btn" onclick="resetSettings()">Reset all to defaults</button>
+    <span id="set-msg"></span>
+  </div>
+</aside>
+
 <!-- Alert case drawer: opens when an analyst clicks an alert; shows evidence + full decision toolbar -->
-<div id="backdrop" onclick="closeDrawer()"></div>
+<div id="backdrop" onclick="closeOverlays()"></div>
 <aside id="drawer">
   <div class="dhead"><h2 id="d-title">Alert</h2><button class="x" onclick="closeDrawer()">×</button></div>
   <div class="dbody" id="d-body"></div>
@@ -320,7 +354,65 @@ async function suppress(id){ const hrs=prompt('Suppress this subject for how man
   const w = hrs===''?24:parseFloat(hrs); const reason=prompt('Reason (optional):')||null;
   await post('/decision/alerts/'+id+'/suppress',{window_hours:w,reason:reason}); closeDrawer(); }
 async function respond(id,action){ await post('/decision/alerts/'+id+'/act',{action:action}); await renderCase(id); }
-document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDrawer(); });
+
+// ---------------- Settings panel (personalize limits & thresholds) ----------------
+function closeSettings(){ $('setpanel').classList.remove('show'); if(!$('drawer').classList.contains('show')) $('backdrop').classList.remove('show'); }
+function closeOverlays(){ closeDrawer(); closeSettings(); }
+$('cfgbtn').onclick = openSettings;
+
+async function openSettings(){
+  $('backdrop').classList.add('show'); $('setpanel').classList.add('show');
+  $('set-msg').textContent=''; $('set-body').innerHTML='<p class="muted">loading…</p>';
+  try{ const d=await (await fetch('/decision/settings')).json(); renderSettings(d.groups); }
+  catch(e){ $('set-body').innerHTML='<p class="muted">could not load settings</p>'; }
+}
+
+function renderSettings(groups){
+  $('set-body').innerHTML = (groups||[]).map(g=>{
+    const rows = g.settings.map(s=>{
+      const ov = s.overridden? '<span class="ov">overridden</span>':'';
+      const help = s.help? `<span class="h">${esc(s.help)}</span>`:'';
+      let input;
+      if(s.type==='bool'){
+        input = `<label class="switch"><input type="checkbox" data-key="${s.key}" data-type="bool" ${s.value?'checked':''}><span class="slider"></span></label>`;
+      } else {
+        const step = s.step!=null? s.step : (s.type==='float'?0.01:1);
+        const mn = s.min!=null? `min="${s.min}"`:''; const mx = s.max!=null? `max="${s.max}"`:'';
+        input = `<input type="number" data-key="${s.key}" data-type="${s.type}" value="${s.value}" step="${step}" ${mn} ${mx}>`;
+      }
+      return `<div class="setrow"><div class="lab">${esc(s.label)}${ov}${help}</div>${input}</div>`;
+    }).join('');
+    return `<div class="setgrp">${esc(g.group)}</div>${rows}`;
+  }).join('');
+}
+
+function collectSettings(){
+  const values={};
+  document.querySelectorAll('#set-body [data-key]').forEach(el=>{
+    const k=el.dataset.key, t=el.dataset.type;
+    values[k] = t==='bool'? el.checked : (t==='float'? parseFloat(el.value) : parseInt(el.value,10));
+  });
+  return values;
+}
+
+async function saveSettings(){
+  $('set-msg').style.color='var(--ok)'; $('set-msg').textContent='saving…';
+  try{
+    const r=await fetch('/decision/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:collectSettings()})});
+    if(!r.ok){ const e=await r.json(); $('set-msg').style.color='var(--crit)'; $('set-msg').textContent=(e.detail||'invalid').toString(); return; }
+    $('set-msg').textContent='saved ✓';
+    const d=await (await fetch('/decision/settings')).json(); renderSettings(d.groups);
+  }catch(e){ $('set-msg').style.color='var(--crit)'; $('set-msg').textContent='save failed'; }
+}
+
+async function resetSettings(){
+  if(!confirm('Reset all settings to their defaults?')) return;
+  await fetch('/decision/settings/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  $('set-msg').style.color='var(--ok)'; $('set-msg').textContent='reset ✓';
+  const d=await (await fetch('/decision/settings')).json(); renderSettings(d.groups);
+}
+
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeOverlays(); });
 
 function connect(){
   const es = new EventSource('/decision/stream');
