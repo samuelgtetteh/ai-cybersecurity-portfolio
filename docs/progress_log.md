@@ -16,8 +16,11 @@ Newest entry at the top.
 - `verdict_store.py`: `actions` table + `record_action`/`query_actions`/`get_alert`/`close_alert`.
   `decision_api.py`: `GET /decision/actions` + `POST /decision/alerts/{id}/close`.
 - Verified via TestClient: high alert → log+ticket fired (webhook skipped, unconfigured); close works
-  and is sticky; missing-id → 404. Dockerfile COPYs actions.py. Remaining: C3.6 rebuild+redeploy.
-  Next phase: E (AI platform).
+  and is sticky; missing-id → 404. Dockerfile COPYs actions.py.
+- **Deployed live (C3.6):** RedMap rebuilt with actions.py + recreated on the persistent volume.
+  Confirmed: evaluate created 5 alerts from the live stream and fired responders for each (log ok,
+  ticket ok with SEC-N refs, webhook skipped/unconfigured). **Track C (Record→Decide→Act) is now
+  complete and running live.** Next/final track: Phase E (AI platform — Qwen triage + RegMap RAG).
 
 ## 2026-07-11 (late) — Decision layer, Phase C2: Decide (policy/rules engine)
 
