@@ -4,6 +4,21 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-11 (late) — Decision layer, Phase C2: Decide (policy/rules engine)
+
+- `backend/policy.py`: rules over the recorded trail → durable `alerts`. Rules: **identity_burst**
+  (>= N flagged logins from one src_user in a window), **ics_sustained** (>= N flagged ICS ticks),
+  **high_severity** (single extreme-score verdict; ICS deduped to one/window, identity per subject).
+  **Outcome weighting** uses the C1 feedback labels: chronic-false-positive subjects are suppressed,
+  confirmed-malicious ones escalated. `evaluate()` is idempotent (dedup vs open alerts).
+- `alerts` table + `record_alert`/`query_alerts`/`open_alert_exists`/`recent_verdicts`/
+  `subject_outcome_history` in `verdict_store.py`. `GET /decision/alerts` (auto-evaluates) +
+  `POST /decision/evaluate` in `decision_api.py`. Env-overridable thresholds.
+- Verified via TestClient: burst→alert, sustained ICS→alert, idempotent re-eval, and benign-history
+  SUPPRESSION all correct. Dockerfile updated to COPY policy.py.
+- Remaining: C2.6 rebuild+redeploy RedMap for live C2 (build tracker in docs/decision_layer_plan.md).
+  Next phase: C3 (Act).
+
 ## 2026-07-11 (late) — Decision layer, Phase C1: Record + production logging/feedback
 
 Started Track C (Record → Decide → Act) from `docs/development_roadmap.md`; plan +
