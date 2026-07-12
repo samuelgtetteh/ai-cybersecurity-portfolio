@@ -16,8 +16,11 @@ Newest entry at the top.
   `POST /decision/evaluate` in `decision_api.py`. Env-overridable thresholds.
 - Verified via TestClient: burst→alert, sustained ICS→alert, idempotent re-eval, and benign-history
   SUPPRESSION all correct. Dockerfile updated to COPY policy.py.
-- Remaining: C2.6 rebuild+redeploy RedMap for live C2 (build tracker in docs/decision_layer_plan.md).
-  Next phase: C3 (Act).
+- **Deployed live (C2.6):** RedMap rebuilt with policy.py + recreated on the persistent volume.
+  Confirmed at scale from the running live-lab: 1,167 verdicts all auto-labelled; 5 alerts
+  (identity_burst for the 3 attacker accounts w/ severity escalated by malicious history,
+  ics_sustained, high_severity); live metrics precision 0.992 / recall 0.977 / specificity 0.994
+  computed from the DB. Next phase: C3 (Act).
 
 ## 2026-07-11 (late) — Decision layer, Phase C1: Record + production logging/feedback
 

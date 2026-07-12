@@ -102,13 +102,16 @@ ongoing burst). `evaluate(now)` is idempotent and safe to call repeatedly.
   one deduped high_severity(ics), idempotent re-evaluate (0 new), and outcome-weighted SUPPRESSION
   (svc@DOM1 burst suppressed by benign history). Dockerfile updated to COPY policy.py.
 - [x] **C2.5** DONE — committed + pushed (see git log). 
-- [ ] **C2.6** Rebuild RedMap image + recreate so the LIVE backend serves /decision/alerts + /evaluate
-  (same steps as C1 deploy: `docker build -f backend/Dockerfile -t regmap-api .` then recreate RedMap
-  with `MSYS_NO_PATHCONV=1 ... -e VERDICT_DB=/verdicts/verdicts.db -v redmap_verdicts:/verdicts`).
+- [x] **C2.6** DONE — RedMap rebuilt (image with policy.py) + recreated with the persistent volume;
+  C2 is LIVE. Confirmed at scale from the running live-lab: 1,167 verdicts all auto-labelled; 5 alerts
+  (3 identity_burst for the attacker accounts w/ escalated severity from malicious history,
+  ics_sustained, high_severity); live metrics precision 0.992 / recall 0.977 / specificity 0.994.
 
-**RESUME POINTER (C2):** C2.1–C2.5 DONE and committed. Only **C2.6** (rebuild+redeploy RedMap for
-live C2) may remain. After that, C2 is fully done → move to **C3 (Act)**: `backend/actions.py`
-(log/webhook/ticket responders) dispatched when an alert fires, actions themselves recorded.
+**RESUME POINTER (C2):** ✅ C2 FULLY DONE + DEPLOYED LIVE (committed `81f3eb2`). Next phase → **C3 (Act)**:
+`backend/actions.py` — pluggable responders (log / webhook / ticket stub) dispatched when an alert
+fires, with the actions themselves recorded for audit; add `POST /decision/alerts/{id}/close` and an
+`actions` table. Then **Phase E (AI)**: Qwen triage summary per alert + RegMap-embedder RAG over
+regulations. (These live numbers are strong evidence for the eventual Exhibit 16.)
 
 ## Design decisions
 - SQLite via stdlib (no new heavy dep); path from env `VERDICT_DB`, default
