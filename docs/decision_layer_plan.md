@@ -141,14 +141,20 @@ recorded as status=failed and never breaks scoring or evaluation.
 - [x] **C3.4** DONE — verified: burst→high alert→log+ticket fired, webhook skipped (no URL); close
   works and is sticky (no re-fire); missing-id close → 404.
 - [x] **C3.5** DONE — committed + pushed (see git log). Dockerfile now COPYs actions.py.
-- [ ] **C3.6** Rebuild + redeploy RedMap for live C3 (`docker build -f backend/Dockerfile -t
-  regmap-api .`; recreate with `MSYS_NO_PATHCONV=1 ... -e VERDICT_DB=/verdicts/verdicts.db
-  -v redmap_verdicts:/verdicts regmap-api`).
+- [x] **C3.6** DONE — RedMap rebuilt with actions.py + recreated on the persistent volume; C3 LIVE.
+  Confirmed: evaluate created 5 alerts from the live stream and fired responders for each — log ok,
+  ticket ok (SEC-N refs), webhook skipped (unconfigured).
 
-**RESUME POINTER (C3):** C3.1–C3.5 DONE + committed. Only **C3.6** (rebuild+redeploy for live C3)
-may remain. After that → **Phase E (AI platform)**: Qwen triage summary per alert
-(models/qwen2.5-1.5b-instruct, already used by Control Advisor) + RegMap-embedder RAG over the
-regulation corpus to attach relevant control/obligation context to each alert.
+**RESUME POINTER (C3/Track C):** ✅ TRACK C COMPLETE + DEPLOYED LIVE. Full Record→Decide→Act pipeline
+running (`9bf7710`). Next → **Phase E (AI platform)** — the final track:
+- per-alert **triage summary** via the local Qwen model (`models/qwen2.5-1.5b-instruct`, already used
+  by Control Advisor `scanner/llm_interview.py`);
+- **RAG** over the regulation corpus using the RegMap embedder (`models/regmap-embedder`) to attach the
+  most relevant NIST/HIPAA control/obligation context to each alert;
+- likely `backend/ai_triage.py` + `GET /decision/alerts/{id}/triage` (lazy, cached). Keep it optional/
+  best-effort (model load is heavy) and env-gated so the core pipeline never depends on it.
+Then consider **Exhibit 16** documenting the live decisioning system (the live metrics + alerts +
+actions are strong evidence).
 
 ## Design decisions
 - SQLite via stdlib (no new heavy dep); path from env `VERDICT_DB`, default
