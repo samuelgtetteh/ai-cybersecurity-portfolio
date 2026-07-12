@@ -4,6 +4,22 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-12 — Decision layer, Phase E: AI triage (RAG + local LLM) — Track C+E complete
+
+- `backend/ai_triage.py` + `GET /decision/alerts/{id}/triage`: for a given alert, retrieve the most
+  relevant HIPAA provisions via the fine-tuned RegMap embedder (RAG over the /map corpus) and write a
+  concise SOC triage summary with the local Qwen model (models/qwen2.5-1.5b-instruct, same loader as
+  Control Advisor). Lazy (models load on first call), gated (`AI_TRIAGE_ENABLED`/`AI_TRIAGE_LLM`),
+  best-effort (degrades to a templated summary + RAG context when the LLM is off/absent).
+- Verified: (a) LLM-off → 3 relevant provisions (top "Unique User Identification") + templated
+  summary; (b) LLM-on → Qwen produced a grounded what/why/next-action triage citing the retrieved
+  controls. Dockerfile COPYs ai_triage.py.
+- Container note: image ships regmap-embedder + corpus (RAG + templated work live) but NOT Qwen
+  (~3 GB), so in-container `llm_used=false` unless Qwen is added to the image (deferred choice).
+- This completes the full decisioning platform (Record → Decide → Act → AI triage). Reproducible
+  walk-throughs: notebooks 08 (Record) + 09 (Decide/Act); decision-layer pytest suite (7 tests).
+  Next: Exhibit 16 (document the live system as NIW evidence).
+
 ## 2026-07-11 (late) — Decision layer, Phase C3: Act (response layer)
 
 - `backend/actions.py`: pluggable responders — `log` (always), `ticket` (medium/high, stub),

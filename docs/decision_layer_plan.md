@@ -61,8 +61,9 @@ material the decision layer records and acts on.
   pluggable responders (log/ticket/webhook, severity-routed) dispatched inline by `policy.evaluate`;
   every action recorded in an `actions` audit table; `GET /decision/actions` + `POST
   /decision/alerts/{id}/close`. See C3 build tracker below.
-- [ ] **E — AI platform.** LLM triage summary per alert (Qwen, local) + RAG over regulation
-  corpus (RegMap embedder) to attach the relevant control/obligation context to a decision.
+- [x] **E — AI platform.** DONE 2026-07-12. `backend/ai_triage.py` + `GET /decision/alerts/{id}/triage`:
+  local Qwen LLM triage summary per alert + RAG over the HIPAA corpus (RegMap embedder); lazy, gated,
+  best-effort (degrades to RAG + templated summary when the LLM is unavailable, e.g. in-container).
 - [ ] **Exhibit 16** — document the running decisioning system with measured evidence,
   mirroring the Exhibit 14 style.
 
@@ -155,6 +156,37 @@ running (`9bf7710`). Next → **Phase E (AI platform)** — the final track:
   best-effort (model load is heavy) and env-gated so the core pipeline never depends on it.
 Then consider **Exhibit 16** documenting the live decisioning system (the live metrics + alerts +
 actions are strong evidence).
+
+## Phase E build tracker (AI platform) — IN PROGRESS (resume anchor)
+Started 2026-07-12. The final track: per-alert AI triage grounded by RAG over the compliance corpus.
+
+**Design.** `backend/ai_triage.py` produces, for a given alert, a short analyst triage summary +
+the most relevant compliance controls:
+- **RAG** — retrieve top-k HIPAA provisions for the alert using the RegMap embedder
+  (`models/regmap-embedder`) over the same corpus as `/map` (`data/processed/training_pairs.csv`).
+- **LLM summary** — the local Qwen model (`models/qwen2.5-1.5b-instruct`, same loader as Control
+  Advisor `scanner/llm_interview.py`: AutoTokenizer/AutoModelForCausalLM, chat template, greedy).
+- Everything is **lazy** (heavy models load on first triage call), **gated** (`AI_TRIAGE_ENABLED`,
+  `AI_TRIAGE_LLM`), and **best-effort**: if the LLM is disabled/absent, a deterministic templated
+  summary + the RAG context is still returned. The core pipeline never imports the heavy models.
+- **Container note:** the RedMap image ships `regmap-embedder` + training_pairs.csv (so RAG +
+  templated summary work live) but NOT Qwen (~3 GB) — so in the container `llm_used=false` unless we
+  choose to add Qwen to the image. Full LLM triage runs locally where the model is present.
+
+**Build checklist:**
+- [x] **E.1** DONE — `backend/ai_triage.py`: lazy retriever (RegMap embedder over HIPAA corpus) +
+  lazy Qwen + best-effort `triage(alert)` → `{enabled, summary, related_controls, llm_used}`.
+- [x] **E.2** DONE — `GET /decision/alerts/{id}/triage`; Dockerfile COPYs ai_triage.py.
+- [x] **E.3** DONE — verified: (a) RAG+templated (LLM off) returns 3 relevant HIPAA provisions
+  (top: "Unique User Identification") + templated summary; (b) full LLM triage with Qwen produces a
+  grounded SOC summary citing the retrieved controls. 
+- [x] **E.4** DONE — committed + pushed.
+
+**RESUME POINTER (E):** ✅ PHASE E DONE. Full decisioning platform (Record→Decide→Act + AI triage)
+built, verified, committed. Optional: rebuild RedMap so the live container serves /triage (RAG +
+templated works in-container now; full LLM needs Qwen added to the image, ~3 GB — a deliberate
+choice, deferred). **Next: build Exhibit 16** documenting the live decisioning system as NIW evidence
+(coverage/metrics/alerts/actions/triage), mirroring the Exhibit 14 style.
 
 ## Design decisions
 - SQLite via stdlib (no new heavy dep); path from env `VERDICT_DB`, default
