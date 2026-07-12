@@ -9,10 +9,15 @@ our P3!), `environment_detect.py`, `mac_lookup.py`, `baseline_controls.py`, `int
 `llm_interview.py`, `semantic_answer.py`, `docx_report.py`/`xlsx_report.py`/`report_export.py`.
 This is likely earlier work toward the same tool (standalone/notebook-oriented, not wired to the
 API). **Our P1 is a separate, platform-integrated package (`backend/securescan/`) named to avoid a
-name collision** (both can't be `scanner` on the path). **TODO before P2/P3:** review
-control-advisor/scanner and decide what to port/reuse — especially `control_mapper.py` and
-`baseline_controls.py` (P3/P2), `cloud_scan.py`/`environment_detect.py` (the cloud engines from the
-tooling answer), and the report exporters. Don't duplicate what's already there.
+name collision** (both can't be `scanner` on the path).
+
+**RECONCILED 2026-07-12:** rather than port/duplicate control-advisor, we **wrapped it whole**
+behind `backend/advisor_api.py` (`/advisor`) and a browser "Compliance Advisor" page — env detect,
+network/cloud scan, `control_mapper` (CVE-free, category→NIST 800-53 via the RegMap embedder — this
+is the P3-style mapping), interview, and docx/xlsx/json reports. So the two tools now coexist:
+**SecureScan** (`/scan`) = CVE view (nmap→NVD); **Compliance Advisor** (`/advisor`) = control/report
+view (control-advisor). P2 hardening + a CVE→control bridge can build on either; reuse
+control_mapper for the control side rather than writing a new one.
 
 ---
 

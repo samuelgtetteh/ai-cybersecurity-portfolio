@@ -75,7 +75,15 @@ Design notes:
 - UI: a gear/settings drawer on the dashboard with grouped, validated fields + save + revert.
 - Safety: clamp to sane ranges; never let a setting break scoring (advisory-only principle).
 
-### BC.2 — Run the compliance audit / background scanner from the browser
+### BC.2 / BC.3 — LARGELY DELIVERED 2026-07-12 (menu + multi-tool control plane)
+The dashboard is now a multi-view control plane (`backend/dashboard/index.html`): a `☰` menu +
+tool nav + hash routing across **Monitor**, **SecureScan** (`/scan`), and **Compliance Advisor**
+(`/advisor` — env detect → scan → adaptive interview form → generate DOCX/XLSX/JSON, all from the
+browser). Menu also exports the verdict trail. This satisfies most of BC.2 (run scans/audits from
+the page) and BC.3 (operate the tools from the browser). Still open under BC.3: start/stop the
+live monitors and simulators from the page; CSV export of the trail; and the auth gate (BC.4).
+
+### (original) BC.2 — Run the compliance audit / background scanner from the browser
 - There is a background scanner / compliance-audit capability run outside the browser today
   (`backend/event_simulator.py`, the ICS/identity simulators, and the RegMap `/map` compliance
   mapping). Wire a **"Run audit / scan now"** button + status that triggers it server-side.
