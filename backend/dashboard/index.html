@@ -146,6 +146,14 @@
   .dlrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
   .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
   @keyframes sp{to{transform:rotate(360deg)}}
+  .warn-banner{background:rgba(255,176,32,.12);border:1px solid var(--warn);color:var(--warn);border-radius:8px;padding:9px 12px;font-size:12.5px;margin-bottom:14px}
+  .modes{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+  .modecard{flex:1;min-width:250px;display:flex;flex-direction:column;gap:3px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;cursor:pointer;background:var(--panel)}
+  .modecard b{font-size:14px}.modecard .d{color:var(--muted);font-size:12px}
+  .modecard:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  .ackrow{display:flex;align-items:center;gap:8px;font-size:12.5px;margin:10px 0}
+  .envbox{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px}
+  .envbox a{cursor:pointer}
 </style>
 </head>
 <body>
@@ -208,14 +216,18 @@
 <div id="view-scan" class="view">
   <div class="page">
     <h2>SecureScan — asset discovery &amp; CVE mapping</h2>
-    <p class="lead">Discover open ports/services on an authorized host and map each to known CVEs (NVD). Scans are restricted to loopback/private ranges unless the server opts in (SCAN_ALLOW_ANY). <span id="sc-engines" class="note"></span></p>
+    <p class="lead">Discover open ports/services on an authorized host and map each to known CVEs (NVD). <span id="sc-engines" class="note"></span></p>
+    <div class="warn-banner">⚠️ <b>Authorized use only.</b> Scan only hosts/subnets you own or are explicitly authorized to test.</div>
     <div class="form">
+      <button class="btn" id="sc-detect" title="detect this host's network">🔍 Discover environment</button>
       <div class="field"><label>Target (host / IP)</label><input id="sc-target" value="127.0.0.1"></div>
       <div class="field"><label>Ports</label><input id="sc-ports" value="1-1024" placeholder="1-1024 or 22,80,443"></div>
       <div class="field"><label>Engine</label><select id="sc-engine"><option value="auto">auto</option><option value="socket">socket</option><option value="nmap">nmap</option></select></div>
       <div class="field"><label>CVE mapping</label><select id="sc-cves"><option value="true">map CVEs</option><option value="false">ports only (fast)</option></select></div>
-      <button class="btn primary" id="sc-run">Scan</button>
     </div>
+    <div id="sc-env" class="envbox" style="margin:10px 0;display:none"></div>
+    <div class="ackrow"><input type="checkbox" id="sc-ack"><label for="sc-ack">I am authorized to scan this target.</label>
+      <button class="btn primary" id="sc-run" style="margin-left:8px">Scan</button></div>
     <div id="sc-status" class="note" style="margin-top:8px"></div>
     <div id="sc-results" style="margin-top:14px"></div>
   </div>
@@ -225,28 +237,52 @@
 <div id="view-advisor" class="view">
   <div class="page">
     <h2>Compliance Advisor</h2>
-    <p class="lead">Scan your environment, answer a short interview, and generate NIST SP 800-53 control recommendations plus downloadable DOCX/XLSX/JSON reports — the same flow as the PowerShell tool, in your browser. <span id="ca-llm" class="note"></span></p>
+    <p class="lead">Assess your environment and generate NIST SP 800-53 control recommendations + downloadable DOCX/XLSX/JSON reports. <span id="ca-llm" class="note"></span></p>
+    <div class="warn-banner">⚠️ <b>Authorized use only.</b> Scan only networks and subnets you own or are explicitly authorized to test. Scanning third-party networks without permission may be illegal.</div>
+
+    <div class="modes">
+      <label class="modecard"><span><input type="radio" name="camode" value="scan" checked> <b>Scan my environment</b></span>
+        <span class="d">Discover assets on a network you're authorized to scan, map them to controls, then answer a short interview.</span></label>
+      <label class="modecard"><span><input type="radio" name="camode" value="template"> <b>Generate a compliance template</b></span>
+        <span class="d">No scan — answer an expanded questionnaire and we determine your environment type and produce a tailored compliance document.</span></label>
+    </div>
+
     <div class="steps">
-      <div class="step on" id="cst-1">1 · Environment &amp; scan</div>
+      <div class="step on" id="cst-1">1 · <span id="cst-1-lbl">Environment &amp; scan</span></div>
       <div class="step" id="cst-2">2 · Interview</div>
       <div class="step" id="cst-3">3 · Report</div>
     </div>
+
     <div id="ca-step1">
-      <button class="btn" id="ca-detect">Detect environment</button>
-      <div id="ca-env" class="note" style="margin:10px 0"></div>
-      <div class="form">
-        <div class="field"><label>Target (CIDR or host)</label><input id="ca-target" placeholder="192.168.1.0/24 or 127.0.0.1"></div>
-        <div class="field"><label>Mode</label><select id="ca-mode"><option value="net">network scan</option><option value="cloud">AWS cloud audit</option></select></div>
+      <button class="btn" id="ca-detect">🔍 Discover environment</button>
+      <div id="ca-env" class="envbox" style="margin:10px 0;display:none"></div>
+      <!-- scan mode -->
+      <div id="ca-scanbox">
+        <div class="form">
+          <div class="field"><label>Network type</label><select id="ca-provider"></select></div>
+          <div class="field" id="ca-target-field"><label>Target (CIDR or host)</label><input id="ca-target" placeholder="e.g. 10.0.0.0/24 or 10.0.0.5"></div>
+          <div class="field" id="ca-region-field" style="display:none"><label>AWS region</label><input id="ca-region" value="us-east-1"></div>
+        </div>
+        <div id="ca-provider-note" class="note" style="margin:6px 0"></div>
+        <div class="ackrow"><input type="checkbox" id="ca-ack"><label for="ca-ack">I am authorized to scan this target.</label></div>
         <button class="btn primary" id="ca-scan">Scan &amp; map controls</button>
+        <div id="ca-scanout" style="margin-top:12px"></div>
       </div>
-      <div id="ca-scanout" style="margin-top:12px"></div>
+      <!-- template mode -->
+      <div id="ca-templatebox" style="display:none">
+        <p class="note">You'll answer an expanded questionnaire (environment type, cloud, OT/ICS, exposure, maturity). No scanning is performed.</p>
+        <button class="btn primary" id="ca-tmpl-start">Start questionnaire →</button>
+      </div>
     </div>
+
     <div id="ca-step2" style="display:none">
       <div id="ca-questions"></div>
       <button class="btn primary" id="ca-next">Continue</button>
       <button class="btn" onclick="caGoStep(1)">Back</button>
     </div>
+
     <div id="ca-step3" style="display:none">
+      <div id="ca-envprofile" class="envbox" style="margin-bottom:12px;display:none"></div>
       <p class="note"><label><input type="checkbox" id="ca-lang"> also generate written policy language &amp; executive summary (slower — uses the local LLM if available)</label></p>
       <button class="btn primary" id="ca-generate">Generate report</button>
       <button class="btn" onclick="caGoStep(2)">Back</button>
@@ -549,9 +585,16 @@ async function exportTrail(){ $('appmenu').classList.remove('open');
 let scanReady=false;
 async function scanInit(){ if(scanReady) return; scanReady=true;
   try{ const d=await (await fetch('/scan/engines')).json();
-    $('sc-engines').textContent = `engines: ${d.engines.join(', ')} · default ${d.default}` + (d.authorization.allow_any?' · SCAN_ALLOW_ANY on':'');
+    $('sc-engines').textContent = `engines: ${d.engines.join(', ')} · default ${d.default}` + (d.authorization.allow_any?' · any-target enabled':' · private/LAN only');
   }catch(e){}
   $('sc-run').onclick = runScan;
+  $('sc-detect').onclick = async()=>{
+    $('sc-env').style.display='block'; $('sc-env').innerHTML='<span class="spin"></span> detecting…';
+    try{ const e=await (await fetch('/advisor/environment')).json();
+      const ifs=(e.local_interfaces||[]).map(i=>{const r=i.suggested_range||i.ip; return `<a style="cursor:pointer" onclick="$('sc-target').value='${r}'">${esc(i.ip)}${i.suggested_range?' → '+esc(i.suggested_range):''}</a>`;}).join(' · ');
+      $('sc-env').innerHTML=`<b>Interfaces</b> (click to use): ${ifs||'none'} · outbound IP: ${esc(e.outbound_ip||'—')}`;
+    }catch(e){ $('sc-env').textContent='environment detection unavailable'; }
+  };
 }
 function cvssPill(s){ if(s==null) return '<span class="sevpill sev-low">n/a</span>';
   const sev = s>=9?'critical':s>=7?'high':s>=4?'medium':'low';
@@ -559,6 +602,8 @@ function cvssPill(s){ if(s==null) return '<span class="sevpill sev-low">n/a</spa
 async function runScan(){
   const target=$('sc-target').value.trim(); const ports=$('sc-ports').value.trim();
   const engine=$('sc-engine').value; const withCves=$('sc-cves').value==='true';
+  if(!$('sc-ack').checked){ alert('Please confirm you are authorized to scan this target.'); return; }
+  if(!target){ alert('Enter a target host/IP.'); return; }
   $('sc-status').innerHTML='<span class="spin"></span> scanning '+esc(target)+'…'; $('sc-results').innerHTML='';
   try{
     const r=await fetch('/scan',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -580,45 +625,68 @@ async function runScan(){
 }
 
 // ================= Compliance Advisor view =================
-let advReady=false, caScan=null, caCats=[], caAnswers={}, caFollowLoaded=false;
+let advReady=false, caMode='scan', caScan=null, caCats=[], caAnswers={}, caFollowLoaded=false, caProviders=[];
 async function advisorInit(){ if(advReady) return; advReady=true;
   try{ const h=await (await fetch('/advisor/health')).json();
     $('ca-llm').textContent = h.available? (h.llm_language?'· written-language generation available':'· fast mode (no LLM language)') : '· advisor unavailable on this server';
   }catch(e){}
+  try{ const p=await (await fetch('/advisor/providers')).json(); caProviders=p.providers||[];
+    $('ca-provider').innerHTML = caProviders.map(x=>`<option value="${x.id}">${esc(x.label)}${x.implemented?'':' — planned'}</option>`).join('');
+  }catch(e){}
+  document.querySelectorAll('input[name=camode]').forEach(r=>r.onchange=()=>caSetMode(r.value));
+  $('ca-provider').onchange=caProviderChange;
   $('ca-detect').onclick=caDetect; $('ca-scan').onclick=caScanRun;
+  $('ca-tmpl-start').onclick=()=>caStartInterview();
   $('ca-next').onclick=caContinue; $('ca-generate').onclick=caGenerate;
+  caSetMode('scan'); caProviderChange();
+}
+function caSetMode(m){ caMode=m;
+  $('ca-scanbox').style.display = m==='scan'?'block':'none';
+  $('ca-templatebox').style.display = m==='template'?'block':'none';
+  $('cst-1-lbl').textContent = m==='scan'?'Environment & scan':'Questionnaire';
+}
+function caProviderChange(){
+  const id=$('ca-provider').value; const p=caProviders.find(x=>x.id===id)||{implemented:true};
+  $('ca-target-field').style.display = id==='physical'?'flex':'none';
+  $('ca-region-field').style.display = id==='aws'?'flex':'none';
+  $('ca-provider-note').textContent = p.note||'';
+  $('ca-scan').disabled = !p.implemented; $('ca-scan').style.opacity = p.implemented?'1':'.5';
 }
 function caGoStep(n){ [1,2,3].forEach(i=>{ $('ca-step'+i).style.display = i===n?'block':'none'; $('cst-'+i).classList.toggle('on', i<=n); }); }
 async function caDetect(){
-  $('ca-env').innerHTML='<span class="spin"></span> detecting…';
+  $('ca-env').style.display='block'; $('ca-env').innerHTML='<span class="spin"></span> detecting…';
   try{ const e=await (await fetch('/advisor/environment')).json();
-    const ifs=(e.local_interfaces||[]).map(i=>`<a onclick="$('ca-target').value='${i.suggested_range||i.ip}'" style="cursor:pointer">${esc(i.ip)}${i.suggested_range?' ('+esc(i.suggested_range)+')':''}</a>`).join(' · ');
-    $('ca-env').innerHTML = `Docker: ${e.running_in_docker} · cloud: ${(e.is_cloud_instance||[]).join(',')||'no'} · outbound IP: ${esc(e.outbound_ip||'—')}<br>interfaces (click to use): ${ifs||'none'}`;
+    const ifs=(e.local_interfaces||[]).map(i=>{const r=i.suggested_range||i.ip; return `<a onclick="$('ca-target').value='${r}'">${esc(i.ip)}${i.suggested_range?' → '+esc(i.suggested_range):''}</a>`;}).join(' · ');
+    $('ca-env').innerHTML = `<b>Environment</b> — Docker: ${e.running_in_docker} · cloud instance: ${(e.is_cloud_instance||[]).join(',')||'no'} · outbound IP: ${esc(e.outbound_ip||'—')}<br><b>Interfaces</b> (click to use as target): ${ifs||'none detected'}`;
+    const first=(e.local_interfaces||[]).find(i=>i.suggested_range); if(first && !$('ca-target').value) $('ca-target').value=first.suggested_range;
   }catch(e){ $('ca-env').textContent='environment detection unavailable'; }
 }
 async function caScanRun(){
-  const target=$('ca-target').value.trim(); const cloud=$('ca-mode').value==='cloud';
-  if(!cloud && !target){ alert('enter a target CIDR or host'); return; }
+  const provider=$('ca-provider').value; const target=$('ca-target').value.trim();
+  if(!$('ca-ack').checked){ alert('Please confirm you are authorized to scan this target.'); return; }
+  if(provider==='physical' && !target){ alert('Enter a target CIDR or host — or click “Discover environment”.'); return; }
   $('ca-scanout').innerHTML='<span class="spin"></span> scanning &amp; mapping controls…';
   try{
     const r=await fetch('/advisor/scan',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({target:target||'0.0.0.0/32',cloud})});
+      body:JSON.stringify({provider, target, region:($('ca-region').value||'us-east-1')})});
     const d=await r.json();
     if(!r.ok){ $('ca-scanout').innerHTML='<span style="color:var(--crit)">'+esc(d.detail||'scan failed')+'</span>'; return; }
     caScan=d; caCats=[]; (d.recommendations.hosts||[]).forEach(h=>(h.categories||[]).forEach(c=>{ if(!caCats.includes(c)) caCats.push(c); }));
     const hosts=d.recommendations.hosts||[];
-    $('ca-scanout').innerHTML = `<div class="rescard"><h3>${hosts.length} asset(s), categories: ${caCats.map(esc).join(', ')||'none'}</h3>`+
-      hosts.slice(0,20).map(h=>`<div class="note">${esc(h.ip)} — ${Object.keys(h.recommended_controls||{}).length} category mappings</div>`).join('')+
+    $('ca-scanout').innerHTML = `<div class="rescard"><h3>${hosts.length} asset(s) · categories: ${caCats.map(esc).join(', ')||'none'}</h3>`+
+      hosts.slice(0,25).map(h=>`<div class="note">${esc(h.ip)} — ${Object.keys(h.recommended_controls||{}).length} category mapping(s)</div>`).join('')+
+      (hosts.length?'':'<div class="note">No hosts responded — check the range and that hosts are reachable from the server.</div>')+
       `</div><button class="btn primary" onclick="caStartInterview()">Start interview →</button>`;
   }catch(e){ $('ca-scanout').innerHTML='<span style="color:var(--crit)">request failed</span>'; }
 }
 async function caStartInterview(){
   caAnswers={}; caFollowLoaded=false;
-  $('ca-questions').innerHTML='<span class="spin"></span> loading questions…';
   caGoStep(2);
-  try{ const d=await (await fetch('/advisor/questions')).json();
+  $('ca-questions').innerHTML='<span class="spin"></span> loading questions…';
+  const expanded = caMode==='template';
+  try{ const d=await (await fetch('/advisor/questions?expanded='+expanded)).json();
     let html=`<div class="qcard"><div class="q">${esc(d.business_name.question)}</div>
-      <input class="field" style="width:100%" data-qid="business_name" data-multi="0" type="text"></div>`;
+      <input style="width:100%;background:var(--pill);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:7px 9px" data-qid="business_name" type="text"></div>`;
     html += d.questions.map(renderQuestion).join('');
     $('ca-questions').innerHTML=html;
   }catch(e){ $('ca-questions').innerHTML='could not load questions'; }
@@ -661,12 +729,14 @@ async function caContinue(){
 }
 async function caGenerate(){
   const withLang=$('ca-lang').checked;
-  $('ca-report').innerHTML='<span class="spin"></span> generating report'+(withLang?' with written language (this can take a few minutes)…':'…');
+  $('ca-report').innerHTML='<span class="spin"></span> generating '+(caMode==='template'?'compliance template':'report')+(withLang?' with written language (this can take a few minutes)…':'…');
+  const body={answers:caAnswers, with_language:withLang};
+  if(caMode==='scan' && caScan){ body.scan_report=caScan.scan_report; body.recommendations=caScan.recommendations; }
   try{
-    const r=await fetch('/advisor/report',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({scan_report:caScan.scan_report,recommendations:caScan.recommendations,answers:caAnswers,with_language:withLang})});
+    const r=await fetch('/advisor/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){ $('ca-report').innerHTML='<span style="color:var(--crit)">'+esc(d.detail||'generation failed')+'</span>'; return; }
+    if(d.environment_profile&&d.environment_profile.summary){ const ep=$('ca-envprofile'); ep.style.display='block'; ep.innerHTML='<b>Environment profile:</b> '+esc(d.environment_profile.summary); }
     const base=d.download_base;
     const rows=(d.rows||[]).slice(0,200).map(x=>`<tr><td><span class="sevpill sev-${(x.priority||'low').toLowerCase()}">${esc(x.priority||'')}</span></td>
       <td>${esc(x.control_id||'')}</td><td>${esc(x.category||x.source||'')}</td><td class="muted">${esc((x.control_text||'').slice(0,90))}</td></tr>`).join('');

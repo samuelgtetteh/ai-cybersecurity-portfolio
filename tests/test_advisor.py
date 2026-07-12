@@ -47,6 +47,38 @@ def test_followups_are_adaptive_subset(client):
         assert one not in [q["id"] for q in r2.json()["questions"]]
 
 
+def test_providers_physical_first(client):
+    provs = client.get("/advisor/providers").json()["providers"]
+    assert provs[0]["id"] == "physical" and provs[0]["implemented"] is True
+    ids = {p["id"] for p in provs}
+    assert {"aws", "azure", "gcp"} <= ids
+    assert next(p for p in provs if p["id"] == "azure")["implemented"] is False
+
+
+def test_expanded_questions(client):
+    ids = [q["id"] for q in client.get("/advisor/questions?expanded=true").json()["questions"]]
+    assert "deployment_model" in ids and "has_ot_ics" in ids and "cloud_providers" in ids
+    # base set (non-expanded) does not include them
+    base = [q["id"] for q in client.get("/advisor/questions").json()["questions"]]
+    assert "deployment_model" not in base
+
+
+def test_unimplemented_provider_501(client):
+    assert client.post("/advisor/scan", json={"provider": "azure"}).status_code == 501
+
+
+def test_template_only_report_no_scan(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "REPORTS_DIR", tmp_path)
+    answers = {"business_name": "Acme", "sector": "healthcare", "regulated_data": ["phi"],
+               "internet_facing": "yes", "maturity": "developing", "deployment_model": "hybrid",
+               "cloud_providers": ["aws", "azure"], "has_ot_ics": "yes"}
+    r = client.post("/advisor/report", json={"answers": answers, "with_language": False})
+    assert r.status_code == 200, r.text
+    b = r.json()
+    assert b["files"].get("docx") and b["files"].get("json")           # docs generated without a scan
+    assert "hybrid" in b["environment_profile"]["summary"] and b["environment_profile"]["has_ot_ics"] is True
+
+
 def test_scan_maps_controls_and_authz(client, monkeypatch):
     fake_scan = {"cidr": "127.0.0.1/32", "hosts_found": 1,
                  "results": [{"ip": "127.0.0.1", "categories": ["web"]}]}
