@@ -4,6 +4,21 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-11 (late) — Decision layer, Phase C3: Act (response layer)
+
+- `backend/actions.py`: pluggable responders — `log` (always), `ticket` (medium/high, stub),
+  `webhook` (high, only if `ACTION_WEBHOOK_URL` set; stdlib urllib, no new dep) — chosen by severity
+  ROUTING. `dispatch(alert)` runs them and records each in a new `actions` audit table; best-effort
+  (a responder failure is recorded status=failed, never breaks the pipeline).
+- `policy.evaluate` now dispatches inline for each newly-created alert (Record→Decide→Act end to end;
+  the dispatch() boundary is the seam for a decoupled stream consumer later). Dedup renamed to
+  `recent_alert_exists` (any status) so an analyst's close stays sticky for the window.
+- `verdict_store.py`: `actions` table + `record_action`/`query_actions`/`get_alert`/`close_alert`.
+  `decision_api.py`: `GET /decision/actions` + `POST /decision/alerts/{id}/close`.
+- Verified via TestClient: high alert → log+ticket fired (webhook skipped, unconfigured); close works
+  and is sticky; missing-id → 404. Dockerfile COPYs actions.py. Remaining: C3.6 rebuild+redeploy.
+  Next phase: E (AI platform).
+
 ## 2026-07-11 (late) — Decision layer, Phase C2: Decide (policy/rules engine)
 
 - `backend/policy.py`: rules over the recorded trail → durable `alerts`. Rules: **identity_burst**

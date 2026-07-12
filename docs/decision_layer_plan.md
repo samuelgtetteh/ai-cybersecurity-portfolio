@@ -57,8 +57,10 @@ material the decision layer records and acts on.
   `backend/policy.py` rules engine (identity_burst / ics_sustained / high_severity + outcome
   weighting/suppression); `alerts` table in verdict_store; `GET /decision/alerts` + `POST
   /decision/evaluate`. See the C2 build tracker below.
-- [ ] **C3 — Act.** `backend/actions.py`: pluggable responders (log, webhook, ticket stub),
-  dispatched when a decision fires; actions themselves recorded for audit.
+- [x] **C3 — Act.** DONE 2026-07-11 (code+verified+committed; live redeploy = C3.6). `backend/actions.py`
+  pluggable responders (log/ticket/webhook, severity-routed) dispatched inline by `policy.evaluate`;
+  every action recorded in an `actions` audit table; `GET /decision/actions` + `POST
+  /decision/alerts/{id}/close`. See C3 build tracker below.
 - [ ] **E — AI platform.** LLM triage summary per alert (Qwen, local) + RAG over regulation
   corpus (RegMap embedder) to attach the relevant control/obligation context to a decision.
 - [ ] **Exhibit 16** — document the running decisioning system with measured evidence,
@@ -112,6 +114,41 @@ ongoing burst). `evaluate(now)` is idempotent and safe to call repeatedly.
 fires, with the actions themselves recorded for audit; add `POST /decision/alerts/{id}/close` and an
 `actions` table. Then **Phase E (AI)**: Qwen triage summary per alert + RegMap-embedder RAG over
 regulations. (These live numbers are strong evidence for the eventual Exhibit 16.)
+
+## C3 build tracker (Act) — IN PROGRESS (resume anchor)
+Started 2026-07-11. Build in small steps; flip each checkbox as it lands.
+
+**Design.** When Decide (C2) creates an alert, Act runs one or more *responders* and records each
+in a durable `actions` audit table. Responders are pluggable and chosen by severity (routing):
+- `log` — always; a structured record of the response (baseline).
+- `ticket` — medium/high; creates a ticket stub (recorded; a real deployment calls a tracker).
+- `webhook` — high (and only if `ACTION_WEBHOOK_URL` is set); POSTs the alert JSON (stdlib urllib,
+  no new dependency), best-effort.
+Dispatch is INLINE (policy.evaluate → actions.dispatch for each new alert) — the simplest Record→
+Decide→Act chain; Exhibit 14 §9 notes a decoupled stream consumer is the more production-grade
+arrangement, and `actions.dispatch(alert)` is the seam where that swap happens. Analysts close an
+alert via `POST /decision/alerts/{id}/close`. Everything is best-effort: a responder failure is
+recorded as status=failed and never breaks scoring or evaluation.
+
+**Build checklist (resume from first unchecked):**
+- [x] **C3.1** DONE — `verdict_store.py`: `actions` table + `record_action`, `query_actions`,
+  `get_alert`, `close_alert`. (not committed yet)
+- [x] **C3.2** DONE — `backend/actions.py`: log/ticket/webhook responders (stdlib urllib), severity
+  ROUTING, best-effort `dispatch(alert)` recording each action.
+- [x] **C3.3** DONE — `policy.evaluate` dispatches for each new alert; `GET /decision/actions` +
+  `POST /decision/alerts/{id}/close`. Also renamed dedup to `recent_alert_exists` (any status →
+  a closed alert stays sticky for the window).
+- [x] **C3.4** DONE — verified: burst→high alert→log+ticket fired, webhook skipped (no URL); close
+  works and is sticky (no re-fire); missing-id close → 404.
+- [x] **C3.5** DONE — committed + pushed (see git log). Dockerfile now COPYs actions.py.
+- [ ] **C3.6** Rebuild + redeploy RedMap for live C3 (`docker build -f backend/Dockerfile -t
+  regmap-api .`; recreate with `MSYS_NO_PATHCONV=1 ... -e VERDICT_DB=/verdicts/verdicts.db
+  -v redmap_verdicts:/verdicts regmap-api`).
+
+**RESUME POINTER (C3):** C3.1–C3.5 DONE + committed. Only **C3.6** (rebuild+redeploy for live C3)
+may remain. After that → **Phase E (AI platform)**: Qwen triage summary per alert
+(models/qwen2.5-1.5b-instruct, already used by Control Advisor) + RegMap-embedder RAG over the
+regulation corpus to attach relevant control/obligation context to each alert.
 
 ## Design decisions
 - SQLite via stdlib (no new heavy dep); path from env `VERDICT_DB`, default
