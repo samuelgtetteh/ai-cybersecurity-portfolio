@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException
+import time
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sentence_transformers import SentenceTransformer
@@ -8,10 +9,36 @@ import pandas as pd
 
 from identity_api import router as identity_router
 from ics_api import router as ics_router
+from decision_api import router as decision_router
+from verdict_store import record_verdict_safe, update_verdict_meta, record_request
 
 app = FastAPI(title="RegMap API")
 app.include_router(identity_router)
 app.include_router(ics_router)
+app.include_router(decision_router)
+
+
+@app.middleware("http")
+async def record_traffic(request: Request, call_next):
+    """Log every request the live system handles. A scoring endpoint stashes the id of
+    the verdict it recorded on request.state; we enrich that row with request metadata
+    (latency/status/client/path) and return it as the X-Verdict-Id header so any client
+    can later attach ground truth to that exact decision. Non-scored requests (health
+    checks, validation/errors) are audited in the requests table so the trail is complete."""
+    start = time.perf_counter()
+    response = await call_next(request)
+    latency_ms = round((time.perf_counter() - start) * 1000, 3)
+    client = request.client.host if request.client else None
+    verdict_id = getattr(request.state, "verdict_id", None)
+    if verdict_id:
+        update_verdict_meta(verdict_id, latency_ms=latency_ms,
+                            status=response.status_code, client=client,
+                            path=request.url.path)
+        response.headers["X-Verdict-Id"] = str(verdict_id)
+    else:
+        record_request(request.method, request.url.path, client,
+                       response.status_code, latency_ms)
+    return response
 
 
 @app.get("/", include_in_schema=False)
@@ -47,7 +74,7 @@ class MappingResult(BaseModel):
     score: float
 
 @app.post("/map", response_model=list[MappingResult])
-def map_control(request: QueryRequest):
+def map_control(request: QueryRequest, http_request: Request):
     if not request.nist_control.strip():
         raise HTTPException(status_code=400, detail="Empty control text")
     query_embed = model.encode(request.nist_control.strip(), convert_to_tensor=True)
@@ -59,6 +86,15 @@ def map_control(request: QueryRequest):
             hipaa_citation=hipaa_texts[idx][:200],  # truncate for readability
             score=round(float(cos_scores[idx]), 4)
         ))
+    # Record layer: a low top-1 similarity is a low-confidence mapping worth
+    # flagging (the same guardrail backend/event_simulator.py simulates).
+    top1 = results[0].score if results else 0.0
+    http_request.state.verdict_id = record_verdict_safe(
+        model="regmap", flagged=top1 < 0.5, score=top1,
+        subject=None,
+        detail={"query": request.nist_control.strip()[:200],
+                "top_citation": results[0].hipaa_citation if results else None},
+    )
     return results
 
 # Optional: health check

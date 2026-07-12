@@ -1,0 +1,77 @@
+"""
+Decision-layer API (Track C).
+
+Phase C1 exposes the recorded verdict trail; the logging/feedback extension adds a
+complete request audit, a ground-truth feedback channel, and live detection metrics.
+Later phases (Decide/Act) add /decision/alerts and action endpoints on this router.
+
+Endpoints read/write the durable trail in verdict_store — the authoritative real-time
+record the stateless scorer lacked (Exhibit 14 section 3). Ground truth is decoupled
+from scoring: any live client (analyst UI, SOAR, ticket-resolution webhook, or a test
+event source) attaches the true label to a specific decision via /verdicts/{id}/feedback,
+using the X-Verdict-Id the backend returns on every scored response.
+"""
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
+
+from verdict_store import (metrics, query_requests, query_verdicts,
+                           set_ground_truth, stats)
+
+router = APIRouter(prefix="/decision", tags=["decision"])
+
+
+@router.get("/verdicts")
+def get_verdicts(
+    model: Optional[str] = Query(None, description="identity | ics | regmap"),
+    subject: Optional[str] = Query(None, description="e.g. a source user"),
+    flagged: Optional[bool] = Query(None, description="filter to anomalies only"),
+    labeled: Optional[bool] = Query(None, description="filter to verdicts with ground truth"),
+    limit: int = Query(100, ge=1, le=1000),
+):
+    """Most-recent-first slice of the recorded verdict trail (incl. request metadata
+    and any attached ground truth)."""
+    return query_verdicts(model=model, subject=subject, flagged=flagged,
+                          labeled=labeled, limit=limit)
+
+
+@router.get("/requests")
+def get_requests(limit: int = Query(100, ge=1, le=1000)):
+    """Audit of non-scored requests (health checks, errors, validation failures)."""
+    return query_requests(limit=limit)
+
+
+@router.get("/stats")
+def get_stats():
+    """Coverage totals: verdicts, flagged, labelled, audited requests, per model."""
+    return stats()
+
+
+@router.get("/metrics")
+def get_metrics(model: Optional[str] = Query(None, description="identity | ics | regmap")):
+    """Live confusion matrix + precision/recall/specificity over labelled verdicts."""
+    return metrics(model=model)
+
+
+class Feedback(BaseModel):
+    ground_truth: str  # 'malicious' | 'benign' (synonyms accepted)
+
+
+@router.post("/verdicts/{verdict_id}/feedback")
+def submit_feedback(verdict_id: int, feedback: Feedback):
+    """Attach the true label to a recorded verdict — the feedback loop that lets the
+    decision layer measure and improve its decisions. verdict_id is the value returned
+    in the X-Verdict-Id response header of the original scored request."""
+    try:
+        updated = set_ground_truth(verdict_id, feedback.ground_truth)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"no verdict with id {verdict_id}")
+    return {"verdict_id": verdict_id, "ground_truth": feedback.ground_truth, "recorded": True}
+
+
+@router.get("/health")
+def health():
+    return {"status": "ok"}

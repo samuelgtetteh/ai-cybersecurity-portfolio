@@ -17,6 +17,10 @@ data/raw/*
 data/processed/*
 !data/processed/.gitkeep
 
+# Decision-layer verdict store — live runtime trail, not source (SQLite + journal/WAL)
+data/*.db
+data/*.db-*
+
 # Models
 models/
 
