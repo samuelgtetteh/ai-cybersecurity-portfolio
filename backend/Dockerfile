@@ -17,6 +17,7 @@ COPY backend/policy.py backend/policy.py
 COPY backend/actions.py backend/actions.py
 COPY backend/ai_triage.py backend/ai_triage.py
 COPY backend/llm_client.py backend/llm_client.py
+COPY backend/dashboard backend/dashboard
 COPY models/regmap-embedder models/regmap-embedder
 COPY data/processed/training_pairs.csv data/processed/training_pairs.csv
 COPY data/processed/isolation_forest_model.pkl data/processed/isolation_forest_model.pkl

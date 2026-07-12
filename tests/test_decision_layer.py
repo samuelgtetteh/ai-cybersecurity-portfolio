@@ -151,6 +151,22 @@ def test_reassess_is_advisory_and_clamped(client):
     assert client.post("/decision/alerts/999999/reassess").status_code == 404
 
 
+# --- Dashboard (live console) -----------------------------------------------------
+
+def test_dashboard_served_at_root(client):
+    r = client.get("/")
+    assert r.status_code == 200 and "text/html" in r.headers.get("content-type", "")
+    assert "EventSource" in r.text and "Live Security Decisioning" in r.text  # console, not Swagger
+
+
+def test_overview_shape(client):
+    o = client.get("/decision/overview").json()
+    for k in ("stats", "metrics", "alerts", "recent_verdicts", "actions"):
+        assert k in o
+    assert set(o["metrics"]) == {"all", "identity", "ics"}
+    assert "retention" in o["stats"]
+
+
 # --- FIFO retention (kept last: it trims the shared verdict trail) -----------------
 
 def test_fifo_retention_evicts_oldest(client):

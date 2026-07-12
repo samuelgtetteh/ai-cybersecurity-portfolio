@@ -11,18 +11,33 @@ from scoring: any live client (analyst UI, SOAR, ticket-resolution webhook, or a
 event source) attaches the true label to a specific decision via /verdicts/{id}/feedback,
 using the X-Verdict-Id the backend returns on every scored response.
 """
+import asyncio
+import json
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 import ai_triage
 import policy
-from verdict_store import (close_alert, enforce_retention, get_alert, metrics, query_actions,
-                           query_alerts, query_requests, query_verdicts, set_disposition,
-                           set_ground_truth, stats)
+from verdict_store import (close_alert, enforce_retention, get_alert, max_verdict_id, metrics,
+                           query_actions, query_alerts, query_requests, query_verdicts,
+                           set_disposition, set_ground_truth, stats, verdicts_since)
 
 router = APIRouter(prefix="/decision", tags=["decision"])
+
+
+def _overview() -> dict:
+    """One aggregated snapshot for the live dashboard: system stats, per-model metrics, the open
+    alert queue (priority-sorted), the most recent verdicts, and recent responder actions."""
+    return {
+        "stats": stats(),
+        "metrics": {"all": metrics(), "identity": metrics("identity"), "ics": metrics("ics")},
+        "alerts": query_alerts(status="open", limit=25),
+        "recent_verdicts": query_verdicts(limit=25),
+        "actions": query_actions(limit=15),
+    }
 
 
 @router.get("/verdicts")
@@ -156,6 +171,31 @@ def alert_triage(alert_id: int):
     if alert is None:
         raise HTTPException(status_code=404, detail=f"no alert with id {alert_id}")
     return {"alert_id": alert_id, **ai_triage.triage(alert)}
+
+
+@router.get("/overview")
+def get_overview():
+    """Aggregated snapshot powering the dashboard (single call; also the SSE payload shape)."""
+    return _overview()
+
+
+@router.get("/stream")
+async def stream():
+    """Server-Sent Events feed for the live dashboard. Pushes an initial overview, then every
+    ~1.5s pushes any new verdicts plus a refreshed overview — one persistent connection, no
+    client polling."""
+    async def gen():
+        last = max_verdict_id()
+        yield f"data: {json.dumps({'type': 'init', 'overview': _overview()})}\n\n"
+        while True:
+            await asyncio.sleep(1.5)
+            new = verdicts_since(last, limit=200)
+            if new:
+                last = new[-1]["id"]
+            yield f"data: {json.dumps({'type': 'tick', 'new_verdicts': new, 'overview': _overview()})}\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @router.get("/health")

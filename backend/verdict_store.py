@@ -309,6 +309,20 @@ def query_verdicts(model: Optional[str] = None, subject: Optional[str] = None,
     return _rows_to_dicts(rows)
 
 
+def max_verdict_id() -> int:
+    with _lock:
+        return _conn.execute("SELECT COALESCE(MAX(id), 0) FROM verdicts").fetchone()[0]
+
+
+def verdicts_since(after_id: int, limit: int = 200) -> list[dict]:
+    """Verdicts with id > after_id, oldest-first — the incremental feed for the live dashboard's
+    SSE stream."""
+    q = f"SELECT {', '.join(_VCOLS)} FROM verdicts WHERE id > ? ORDER BY id ASC LIMIT ?"
+    with _lock:
+        rows = _conn.execute(q, (int(after_id), int(limit))).fetchall()
+    return _rows_to_dicts(rows)
+
+
 def query_requests(limit: int = 100) -> list[dict]:
     cols = ["id", "recorded_at", "method", "path", "client", "status", "latency_ms"]
     with _lock:

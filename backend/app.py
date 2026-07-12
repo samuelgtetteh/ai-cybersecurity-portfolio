@@ -1,6 +1,6 @@
 import time
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sentence_transformers import SentenceTransformer
 import torch
@@ -41,9 +41,13 @@ async def record_traffic(request: Request, call_next):
     return response
 
 
+_DASHBOARD_FILE = Path(__file__).resolve().parent / "dashboard" / "index.html"
+
+
 @app.get("/", include_in_schema=False)
 def root():
-    return RedirectResponse(url="/docs")
+    """Live security-decisioning dashboard (SSE). The interactive API docs remain at /docs."""
+    return HTMLResponse(_DASHBOARD_FILE.read_text(encoding="utf-8"))
 
 # Paths are anchored to this file's location (repo_root/backend/app.py), not the
 # process working directory, so the service resolves its model/data the same way
