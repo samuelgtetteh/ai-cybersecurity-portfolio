@@ -221,11 +221,22 @@ reads attacker-controlled fields). It re-ranks/labels; deterministic rules + hum
   verified: disposition=escalate, priority clamped to floor, guardrails hold. Dockerfile COPYs
   llm_client.py.
 
-**RESUME POINTER (E2):** ✅ E2 CODE COMPLETE + VERIFIED + committed. Optional deploy (heavy):
-1. `docker build -t llm-service llm-service`
-2. `MSYS_NO_PATHCONV=1 docker run -d --name llm-service -p 2600:8000 -v "<repo>/models/qwen2.5-1.5b-instruct:/model:ro" -e MODEL_PATH=/model llm-service`
-3. recreate RedMap adding `-e LLM_SERVICE_URL=http://host.docker.internal:2600` (+ existing VERDICT_DB volume) so the live decision layer uses the shared sidecar for /reassess.
-Follow-on idea: point Control Advisor at the same sidecar (one model, many consumers).
+**RESUME POINTER (E2):** ✅ E2 CODE COMPLETE + VERIFIED + committed. **Sidecar deploy DEFERRED by
+decision (2026-07-12):** this machine is too constrained to run a heavier model or a resident LLM
+sidecar smoothly — measured ~1.3 GB free host RAM, a ~7.6 GB Docker VM cap, 4 CPU cores, and only an
+Intel Iris Xe iGPU (no CUDA). So we **keep Qwen2.5-1.5B** and do NOT run the sidecar container for now.
+The decision layer runs fine without it: locally `llm_client` loads the model in-process; in the
+RedMap container triage/reassess degrade gracefully to RAG + templated summary + deterministic
+priority. The `llm-service` image is built and ready.
+
+**To deploy + upgrade on a better machine (recorded recipe):**
+- Honest local ceiling on THIS box would have been Qwen2.5-**7B**-Instruct **Q4_K_M** GGUF (~4.7 GB,
+  Apache-2.0) via a llama.cpp sidecar; 14B-Q4 only with a real GPU / more RAM. See [[llm-upgrade-path]].
+1. Download the GGUF into `models/` (e.g. `models/qwen2.5-7b-instruct-gguf/`).
+2. Switch `llm-service` to a llama.cpp engine (llama-cpp-python) pointed at the GGUF (backend unchanged).
+3. `docker build -t llm-service llm-service`; run it with the model mounted on port 2600.
+4. Recreate RedMap adding `-e LLM_SERVICE_URL=http://host.docker.internal:2600` (+ the VERDICT_DB volume).
+5. Point Control Advisor at the same sidecar too (one model, many consumers).
 
 ## Design decisions
 - SQLite via stdlib (no new heavy dep); path from env `VERDICT_DB`, default
