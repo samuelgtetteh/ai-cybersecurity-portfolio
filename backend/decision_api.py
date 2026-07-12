@@ -13,17 +13,26 @@ using the X-Verdict-Id the backend returns on every scored response.
 """
 import asyncio
 import json
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+import actions
 import ai_triage
 import policy
-from verdict_store import (close_alert, enforce_retention, get_alert, max_verdict_id, metrics,
-                           query_actions, query_alerts, query_requests, query_verdicts,
-                           set_disposition, set_ground_truth, stats, verdicts_since)
+from verdict_store import (add_suppression, close_alert, enforce_retention, get_alert,
+                           label_alert_verdicts, max_verdict_id, metrics, query_actions,
+                           query_alert_events, query_alerts, query_requests, query_suppressions,
+                           query_verdicts, record_alert_event, remove_suppression,
+                           set_disposition, set_ground_truth, stats, subject_outcome_history,
+                           update_alert, verdicts_by_ids, verdicts_since)
+
+# analyst resolution -> the ground-truth label fed back to the alert's contributing verdicts
+_RESOLUTION_FEEDBACK = {"true_positive": "malicious", "false_positive": "benign",
+                        "benign": "benign", "malicious": "malicious"}
 
 router = APIRouter(prefix="/decision", tags=["decision"])
 
@@ -31,10 +40,13 @@ router = APIRouter(prefix="/decision", tags=["decision"])
 def _overview() -> dict:
     """One aggregated snapshot for the live dashboard: system stats, per-model metrics, the open
     alert queue (priority-sorted), the most recent verdicts, and recent responder actions."""
+    # Active queue = open + acknowledged (in-progress); closed/resolved drop off.
+    active = [a for a in query_alerts(status=None, limit=200)
+              if a.get("status") in ("open", "acknowledged")][:25]
     return {
         "stats": stats(),
         "metrics": {"all": metrics(), "identity": metrics("identity"), "ics": metrics("ics")},
-        "alerts": query_alerts(status="open", limit=25),
+        "alerts": active,
         "recent_verdicts": query_verdicts(limit=25),
         "actions": query_actions(limit=15),
     }
@@ -134,6 +146,178 @@ def close(alert_id: int):
     if not close_alert(alert_id):
         raise HTTPException(status_code=404, detail=f"no alert with id {alert_id}")
     return {"alert_id": alert_id, "status": "closed"}
+
+
+@router.get("/alerts/{alert_id}")
+def alert_detail(alert_id: int):
+    """Full case view for one alert: the alert itself, the contributing verdicts (evidence),
+    the subject's ground-truth outcome history, the responder actions taken, and the analyst
+    audit trail. This is what the console opens when you click an alert."""
+    alert = get_alert(alert_id)
+    if alert is None:
+        raise HTTPException(status_code=404, detail=f"no alert with id {alert_id}")
+    return {
+        "alert": alert,
+        "evidence": verdicts_by_ids(alert.get("verdict_ids") or []),
+        "subject_history": subject_outcome_history(alert.get("subject"), alert.get("model")),
+        "actions": query_actions(alert_id=alert_id, limit=100),
+        "events": query_alert_events(alert_id),
+    }
+
+
+class Acknowledge(BaseModel):
+    actor: Optional[str] = "analyst"
+    note: Optional[str] = None
+
+
+@router.post("/alerts/{alert_id}/acknowledge")
+def acknowledge_alert(alert_id: int, body: Acknowledge = Acknowledge()):
+    """Take ownership: mark the case acknowledged (in-progress) and journal it. Keeps the alert
+    in the queue but records that a human is on it."""
+    if get_alert(alert_id) is None:
+        raise HTTPException(status_code=404, detail=f"no alert with id {alert_id}")
+    update_alert(alert_id, status="acknowledged", assignee=body.actor)
+    record_alert_event(alert_id, "acknowledge", actor=body.actor, note=body.note)
+    return {"alert_id": alert_id, "status": "acknowledged", "assignee": body.actor}
+
+
+class Assign(BaseModel):
+    assignee: str
+    actor: Optional[str] = "analyst"
+
+
+@router.post("/alerts/{alert_id}/assign")
+def assign_alert(alert_id: int, body: Assign):
+    """Assign the case to a named analyst."""
+    if get_alert(alert_id) is None:
+        raise HTTPException(status_code=404, detail=f"no alert with id {alert_id}")
+    update_alert(alert_id, assignee=body.assignee)
+    record_alert_event(alert_id, "assign", actor=body.actor,
+                       note=f"assigned to {body.assignee}", detail={"assignee": body.assignee})
+    return {"alert_id": alert_id, "assignee": body.assignee}
+
+
+class Note(BaseModel):
+    note: str
+    actor: Optional[str] = "analyst"
+
+
+@router.post("/alerts/{alert_id}/note")
+def add_note(alert_id: int, body: Note):
+    """Append a free-text note to the case history."""
+    if get_alert(alert_id) is None:
+        raise HTTPException(status_code=404, detail=f"no alert with id {alert_id}")
+    eid = record_alert_event(alert_id, "note", actor=body.actor, note=body.note)
+    return {"alert_id": alert_id, "event_id": eid}
+
+
+class Resolve(BaseModel):
+    resolution: str = "true_positive"  # true_positive | false_positive | benign
+    note: Optional[str] = None
+    actor: Optional[str] = "analyst"
+    apply_feedback: bool = True        # write ground truth to the contributing verdicts
+
+
+@router.post("/alerts/{alert_id}/resolve")
+def resolve_alert(alert_id: int, body: Resolve):
+    """Close a case with a disposition. When apply_feedback is set (default), the resolution is
+    written back as ground truth on every contributing verdict — true_positive -> malicious,
+    false_positive/benign -> benign — which trains the Decide layer's outcome-weighting. This is
+    the loop-closing decision a premium triage console is built around."""
+    if get_alert(alert_id) is None:
+        raise HTTPException(status_code=404, detail=f"no alert with id {alert_id}")
+    resolution = body.resolution.strip().lower()
+    if resolution not in _RESOLUTION_FEEDBACK:
+        raise HTTPException(status_code=422,
+                            detail=f"resolution must be one of {sorted(_RESOLUTION_FEEDBACK)}")
+    labeled = 0
+    if body.apply_feedback:
+        labeled = label_alert_verdicts(alert_id, _RESOLUTION_FEEDBACK[resolution])
+    update_alert(alert_id, status="closed", resolution=resolution,
+                 resolved_at=datetime.now(timezone.utc).isoformat())
+    record_alert_event(alert_id, "resolve", actor=body.actor, note=body.note,
+                       detail={"resolution": resolution, "verdicts_labeled": labeled,
+                               "feedback_applied": body.apply_feedback})
+    return {"alert_id": alert_id, "status": "closed", "resolution": resolution,
+            "verdicts_labeled": labeled}
+
+
+class Suppress(BaseModel):
+    window_hours: Optional[float] = 24   # None/0 = indefinite
+    reason: Optional[str] = None
+    actor: Optional[str] = "analyst"
+    any_model: bool = False              # True = mute the subject across all models
+    close: bool = True                   # also close the current alert
+
+
+@router.post("/alerts/{alert_id}/suppress")
+def suppress_alert(alert_id: int, body: Suppress):
+    """Allowlist the alert's subject (mute future alerts for it) for a window, optionally closing
+    the current alert. Use for a confirmed known-good source (e.g. a service account) that keeps
+    tripping the rules. The Decide layer consults the allowlist before raising the subject again."""
+    alert = get_alert(alert_id)
+    if alert is None:
+        raise HTTPException(status_code=404, detail=f"no alert with id {alert_id}")
+    subject = alert.get("subject")
+    if not subject:
+        raise HTTPException(status_code=422, detail="alert has no subject to suppress")
+    until = None
+    if body.window_hours and body.window_hours > 0:
+        until = (datetime.now(timezone.utc) + timedelta(hours=body.window_hours)).isoformat()
+    model = None if body.any_model else alert.get("model")
+    sup_id = add_suppression(subject, model=model, until=until, reason=body.reason,
+                             actor=body.actor)
+    record_alert_event(alert_id, "suppress", actor=body.actor, note=body.reason,
+                       detail={"subject": subject, "model": model, "until": until,
+                               "suppression_id": sup_id})
+    if body.close:
+        update_alert(alert_id, status="closed", resolution="suppressed",
+                     resolved_at=datetime.now(timezone.utc).isoformat())
+    return {"alert_id": alert_id, "suppression_id": sup_id, "subject": subject,
+            "model": model, "until": until, "closed": body.close}
+
+
+class ManualAction(BaseModel):
+    action: str                          # log | ticket | webhook | disable_account | step_up_auth
+    actor: Optional[str] = "analyst"
+
+
+@router.post("/alerts/{alert_id}/act")
+def take_action(alert_id: int, body: ManualAction):
+    """Fire one responder on demand (analyst-triggered). Posture-changing actions
+    (disable_account / step_up_auth) are recorded stubs — no live side effect — so the console is
+    powerful without becoming an attack surface. See actions.MANUAL_ACTIONS for the menu."""
+    alert = get_alert(alert_id)
+    if alert is None:
+        raise HTTPException(status_code=404, detail=f"no alert with id {alert_id}")
+    if body.action not in actions.MANUAL_ACTIONS:
+        raise HTTPException(status_code=422,
+                            detail=f"action must be one of {actions.MANUAL_ACTIONS}")
+    result = actions.manual_action(alert, body.action, actor=body.actor)
+    record_alert_event(alert_id, "action", actor=body.actor,
+                       note=f"ran {body.action} -> {result['status']}", detail=result)
+    return {"alert_id": alert_id, **result}
+
+
+@router.get("/actions/available")
+def available_actions():
+    """The manual response menu the console offers (so the UI stays in sync with the backend)."""
+    return {"actions": actions.MANUAL_ACTIONS}
+
+
+# --- suppression / allowlist management ---
+@router.get("/suppressions")
+def get_suppressions(active_only: bool = Query(True)):
+    """Current allowlist entries (muted subjects)."""
+    return query_suppressions(active_only=active_only)
+
+
+@router.delete("/suppressions/{suppression_id}")
+def delete_suppression(suppression_id: int):
+    """Lift an allowlist entry (the subject can alert again)."""
+    if not remove_suppression(suppression_id):
+        raise HTTPException(status_code=404, detail=f"no suppression with id {suppression_id}")
+    return {"suppression_id": suppression_id, "removed": True}
 
 
 @router.post("/alerts/{alert_id}/reassess")

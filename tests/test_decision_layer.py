@@ -151,6 +151,85 @@ def test_reassess_is_advisory_and_clamped(client):
     assert client.post("/decision/alerts/999999/reassess").status_code == 404
 
 
+# --- Analyst case-management workflow (Tier 1+2) -------------------------------------
+
+def _make_burst_alert(client, user):
+    """Raise a fresh identity_burst alert for `user` and return its id."""
+    for i in range(12):
+        _login(client, user, f"CQ{i:02d}", suspicious=True)
+    client.post("/decision/evaluate")
+    alerts = client.get("/decision/alerts?limit=500&auto_evaluate=false").json()
+    mine = [a for a in alerts if a["rule"] == "identity_burst" and a["subject"] == user]
+    assert mine, f"expected a burst alert for {user}"
+    return mine[0]["id"]
+
+
+def test_alert_detail_returns_evidence_and_history(client):
+    aid = _make_burst_alert(client, "test-case@DOM1")
+    d = client.get(f"/decision/alerts/{aid}").json()
+    for k in ("alert", "evidence", "subject_history", "actions", "events"):
+        assert k in d
+    assert d["alert"]["id"] == aid
+    assert len(d["evidence"]) >= 3                      # the contributing verdicts
+    assert client.get("/decision/alerts/999999").status_code == 404
+
+
+def test_acknowledge_assign_note_are_journalled(client):
+    aid = _make_burst_alert(client, "test-ack@DOM1")
+    assert client.post(f"/decision/alerts/{aid}/acknowledge", json={"actor": "sam"}).json()["status"] == "acknowledged"
+    client.post(f"/decision/alerts/{aid}/assign", json={"assignee": "dana"})
+    client.post(f"/decision/alerts/{aid}/note", json={"note": "looking into it"})
+    d = client.get(f"/decision/alerts/{aid}").json()
+    assert d["alert"]["status"] == "acknowledged" and d["alert"]["assignee"] == "dana"
+    kinds = {e["action"] for e in d["events"]}
+    assert {"acknowledge", "assign", "note"}.issubset(kinds)
+    # acknowledged alerts stay visible in the active overview queue
+    assert any(a["id"] == aid for a in client.get("/decision/overview").json()["alerts"])
+
+
+def test_resolve_true_positive_labels_evidence(client):
+    aid = _make_burst_alert(client, "test-tp@DOM1")
+    ev_ids = [v["id"] for v in client.get(f"/decision/alerts/{aid}").json()["evidence"]]
+    r = client.post(f"/decision/alerts/{aid}/resolve",
+                    json={"resolution": "true_positive"}).json()
+    assert r["status"] == "closed" and r["verdicts_labeled"] == len(ev_ids)
+    # every contributing verdict now carries the malicious label (feedback loop closed)
+    for vid in ev_ids:
+        v = client.get(f"/decision/verdicts?limit=1000").json()
+        got = [x for x in v if x["id"] == vid]
+        assert got and got[0]["ground_truth"] == "malicious"
+    assert client.post("/decision/alerts/999999/resolve", json={"resolution": "benign"}).status_code == 404
+    assert client.post(f"/decision/alerts/{aid}/resolve", json={"resolution": "banana"}).status_code == 422
+
+
+def test_suppress_allowlists_subject_and_blocks_realert(client):
+    user = "test-sup@DOM1"
+    aid = _make_burst_alert(client, user)
+    client.post(f"/decision/alerts/{aid}/suppress", json={"window_hours": 24, "reason": "known good"})
+    # the subject is now on the allowlist
+    sup = client.get("/decision/suppressions").json()
+    mine = [s for s in sup if s["subject"] == user]
+    assert mine and mine[0]["active"]
+    # new activity for the suppressed subject does NOT raise a fresh alert
+    for i in range(12):
+        _login(client, user, f"CR{i:02d}", suspicious=True)
+    client.post("/decision/evaluate")
+    openq = client.get("/decision/alerts?status=open&auto_evaluate=false").json()
+    assert not [a for a in openq if a["subject"] == user], "suppressed subject should not re-alert"
+    # lifting the suppression works
+    assert client.delete(f"/decision/suppressions/{mine[0]['id']}").json()["removed"] is True
+
+
+def test_manual_action_stub_is_recorded(client):
+    aid = _make_burst_alert(client, "test-act@DOM1")
+    r = client.post(f"/decision/alerts/{aid}/act", json={"action": "disable_account"}).json()
+    assert r["status"] == "stub"                        # posture change is a recorded stub, no live effect
+    acts = client.get(f"/decision/actions?alert_id={aid}").json()
+    assert any(a["action_type"] == "disable_account" for a in acts)
+    assert client.post(f"/decision/alerts/{aid}/act", json={"action": "nope"}).status_code == 422
+    assert "disable_account" in client.get("/decision/actions/available").json()["actions"]
+
+
 # --- Dashboard (live console) -----------------------------------------------------
 
 def test_dashboard_served_at_root(client):

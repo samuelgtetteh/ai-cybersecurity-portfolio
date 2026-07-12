@@ -62,7 +62,52 @@ def _webhook(alert: dict) -> tuple[str, Optional[dict]]:
         return "ok", {"url": ACTION_WEBHOOK_URL, "status": resp.status}
 
 
-_RESPONDERS = {"log": _log, "ticket": _ticket, "webhook": _webhook}
+def _disable_account(alert: dict) -> tuple[str, Optional[dict]]:
+    # Posture-changing STUB — deliberately not wired to a real IdP. A production deployment
+    # would call the directory (Azure AD / Okta) here. Kept human-triggered only: the LLM never
+    # invokes this (it reads attacker-controllable fields), so it can't be prompt-injected into
+    # locking out an account. Recorded as 'stub' so the audit shows intent without side effects.
+    subject = alert.get("subject")
+    return "stub", {"intent": "disable_account", "subject": subject,
+                    "note": "recorded only — no directory integration wired"}
+
+
+def _step_up_auth(alert: dict) -> tuple[str, Optional[dict]]:
+    # Posture-changing STUB — would require step-up / re-auth for the subject. Human-triggered
+    # only, recorded for audit; no live enforcement wired.
+    subject = alert.get("subject")
+    return "stub", {"intent": "require_step_up_auth", "subject": subject,
+                    "note": "recorded only — no IdP integration wired"}
+
+
+_RESPONDERS = {"log": _log, "ticket": _ticket, "webhook": _webhook,
+               "disable_account": _disable_account, "step_up_auth": _step_up_auth}
+
+# Actions an analyst may fire by hand from the console (superset of the auto-routed responders).
+# The posture-changing ones are safe stubs (recorded, no live side effect) — see above.
+MANUAL_ACTIONS = ["log", "ticket", "webhook", "disable_account", "step_up_auth"]
+
+
+def manual_action(alert: dict, action_type: str, actor: Optional[str] = None) -> dict:
+    """Run one responder on demand (analyst-triggered from the alert console) and record it.
+    Returns {action_type, status, detail}. Never raises."""
+    if not alert:
+        return {"action_type": action_type, "status": "failed", "detail": {"error": "no alert"}}
+    responder = _RESPONDERS.get(action_type)
+    if responder is None:
+        return {"action_type": action_type, "status": "failed",
+                "detail": {"error": f"unknown action '{action_type}'",
+                           "available": MANUAL_ACTIONS}}
+    try:
+        status, detail = responder(alert)
+    except Exception as exc:
+        status, detail = "failed", {"error": str(exc)}
+    detail = {**(detail or {}), "manual": True, "actor": actor}
+    try:
+        record_action(alert["id"], action_type, status, detail)
+    except Exception:
+        pass
+    return {"action_type": action_type, "status": status, "detail": detail}
 
 
 def dispatch(alert: dict) -> list[int]:

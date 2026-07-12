@@ -92,15 +92,51 @@ _conn.execute(
         verdict_count  INTEGER,
         verdict_ids    TEXT,               -- JSON list of contributing verdict ids
         detail         TEXT,               -- JSON
-        status         TEXT    NOT NULL DEFAULT 'open',
+        status         TEXT    NOT NULL DEFAULT 'open',  -- open|acknowledged|closed
         priority       INTEGER,            -- 1-5 (5=most urgent); default from severity
         disposition    TEXT,               -- LLM advisory: escalate|monitor|likely_false_positive
-        rationale      TEXT                -- LLM advisory rationale
+        rationale      TEXT,               -- LLM advisory rationale
+        -- analyst case-management fields (Track C, human-in-the-loop workflow):
+        assignee       TEXT,               -- analyst who owns the case
+        resolution     TEXT,               -- true_positive|false_positive|benign|... (on close)
+        resolved_at    TEXT                -- ISO-8601 UTC when resolved/closed
     )
     """
 )
 _conn.execute("CREATE INDEX IF NOT EXISTS idx_a_rule_subject ON alerts(rule, subject, id)")
 _conn.execute("CREATE INDEX IF NOT EXISTS idx_a_status ON alerts(status, id)")
+# Analyst audit trail: one row per human (or system) action taken on an alert — the
+# case history a premium triage console needs (who did what, when, and why).
+_conn.execute(
+    """
+    CREATE TABLE IF NOT EXISTS alert_events (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at TEXT    NOT NULL,
+        alert_id   INTEGER NOT NULL,
+        action     TEXT    NOT NULL,   -- acknowledge|assign|resolve|note|suppress|reopen|action|close
+        actor      TEXT,               -- analyst id (or 'system')
+        note       TEXT,               -- free-text or structured summary
+        detail     TEXT                -- JSON: action-specific context
+    )
+    """
+)
+_conn.execute("CREATE INDEX IF NOT EXISTS idx_ae_alert ON alert_events(alert_id, id)")
+# Suppression / allowlist: mute alerting for a known-good subject (e.g. a service account)
+# for a window. The Decide layer consults this before raising a subject's alert.
+_conn.execute(
+    """
+    CREATE TABLE IF NOT EXISTS suppressions (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at TEXT    NOT NULL,
+        subject    TEXT    NOT NULL,   -- the subject to mute
+        model      TEXT,               -- limit to one model, or NULL = any model
+        until      TEXT,               -- ISO-8601 UTC expiry, or NULL = indefinite
+        reason     TEXT,
+        actor      TEXT
+    )
+    """
+)
+_conn.execute("CREATE INDEX IF NOT EXISTS idx_sup_subject ON suppressions(subject, id)")
 _conn.execute(
     """
     CREATE TABLE IF NOT EXISTS actions (
@@ -129,7 +165,8 @@ def _ensure_columns():
         if col not in have:
             _conn.execute(f"ALTER TABLE verdicts ADD COLUMN {col} {decl}")
     have_a = {r[1] for r in _conn.execute("PRAGMA table_info(alerts)")}
-    for col, decl in [("priority", "INTEGER"), ("disposition", "TEXT"), ("rationale", "TEXT")]:
+    for col, decl in [("priority", "INTEGER"), ("disposition", "TEXT"), ("rationale", "TEXT"),
+                      ("assignee", "TEXT"), ("resolution", "TEXT"), ("resolved_at", "TEXT")]:
         if col not in have_a:
             _conn.execute(f"ALTER TABLE alerts ADD COLUMN {col} {decl}")
 
@@ -323,6 +360,18 @@ def verdicts_since(after_id: int, limit: int = 200) -> list[dict]:
     return _rows_to_dicts(rows)
 
 
+def verdicts_by_ids(ids: list) -> list[dict]:
+    """Fetch specific verdicts by id (the evidence contributing to an alert), oldest first."""
+    ids = [int(i) for i in (ids or [])]
+    if not ids:
+        return []
+    placeholders = ",".join("?" * len(ids))
+    q = f"SELECT {', '.join(_VCOLS)} FROM verdicts WHERE id IN ({placeholders}) ORDER BY id ASC"
+    with _lock:
+        rows = _conn.execute(q, ids).fetchall()
+    return _rows_to_dicts(rows)
+
+
 def query_requests(limit: int = 100) -> list[dict]:
     cols = ["id", "recorded_at", "method", "path", "client", "status", "latency_ms"]
     with _lock:
@@ -410,7 +459,8 @@ def metrics(model: Optional[str] = None) -> dict:
 
 # ------------------------------------------------------------------ Decide layer (C2)
 _ACOLS = ["id", "created_at", "rule", "model", "subject", "severity", "window_seconds",
-          "verdict_count", "verdict_ids", "detail", "status", "priority", "disposition", "rationale"]
+          "verdict_count", "verdict_ids", "detail", "status", "priority", "disposition",
+          "rationale", "assignee", "resolution", "resolved_at"]
 
 # deterministic default priority from severity (1-5, 5 = most urgent), set at alert creation
 _SEVERITY_PRIORITY = {"high": 4, "medium": 2, "low": 1}
@@ -542,6 +592,130 @@ def close_alert(alert_id: int) -> bool:
         cur = _conn.execute("UPDATE alerts SET status = 'closed' WHERE id = ?", (alert_id,))
         _conn.commit()
         return cur.rowcount > 0
+
+
+# ------------------------------------------------------------------ analyst case management
+# The human-in-the-loop workflow layered over the raw alert queue: an analyst can open a case,
+# acknowledge/assign it, add notes, resolve it (which can feed ground truth back to the
+# contributing verdicts, improving future decisions), or allowlist a noisy subject. Every action
+# is journalled to alert_events so the case has a full, auditable history.
+_UPDATABLE_ALERT_FIELDS = {"status", "assignee", "resolution", "resolved_at", "priority",
+                           "disposition", "rationale"}
+
+
+def update_alert(alert_id: int, **fields) -> bool:
+    """Set whitelisted alert columns in one statement (case-management mutations)."""
+    cols = {k: v for k, v in fields.items() if k in _UPDATABLE_ALERT_FIELDS}
+    if not cols:
+        return False
+    assignments = ", ".join(f"{k} = ?" for k in cols)
+    with _lock:
+        cur = _conn.execute(f"UPDATE alerts SET {assignments} WHERE id = ?",
+                            (*cols.values(), alert_id))
+        _conn.commit()
+        return cur.rowcount > 0
+
+
+_AECOLS = ["id", "created_at", "alert_id", "action", "actor", "note", "detail"]
+
+
+def record_alert_event(alert_id: int, action: str, actor: Optional[str] = None,
+                       note: Optional[str] = None, detail: Optional[dict] = None) -> int:
+    """Journal one analyst/system action on an alert (the case audit trail)."""
+    with _lock:
+        cur = _conn.execute(
+            "INSERT INTO alert_events (created_at, alert_id, action, actor, note, detail) "
+            "VALUES (?,?,?,?,?,?)",
+            (_now(), alert_id, action, actor, note,
+             json.dumps(detail) if detail is not None else None),
+        )
+        _conn.commit()
+        return cur.lastrowid
+
+
+def query_alert_events(alert_id: int) -> list[dict]:
+    """The case history for one alert, newest first."""
+    with _lock:
+        rows = _conn.execute(
+            f"SELECT {', '.join(_AECOLS)} FROM alert_events WHERE alert_id = ? ORDER BY id DESC",
+            (alert_id,)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(zip(_AECOLS, r))
+        if d.get("detail"):
+            d["detail"] = json.loads(d["detail"])
+        out.append(d)
+    return out
+
+
+def label_alert_verdicts(alert_id: int, label: str) -> int:
+    """Attach ground truth to every verdict that contributed to this alert — the feedback the
+    analyst's resolution produces. Returns how many verdicts were labelled. 'label' is normalized
+    to malicious/benign. This is what closes the learning loop: a resolved case teaches the
+    Decide layer's outcome-weighting (subject_outcome_history) to escalate confirmed-bad subjects
+    and suppress chronic false positives."""
+    gt = normalize_ground_truth(label)
+    alert = get_alert(alert_id)
+    if not alert:
+        return 0
+    ids = alert.get("verdict_ids") or []
+    n = 0
+    for vid in ids:
+        if set_ground_truth(int(vid), gt):
+            n += 1
+    return n
+
+
+# --- suppression / allowlist ---
+def add_suppression(subject: str, model: Optional[str] = None, until: Optional[str] = None,
+                    reason: Optional[str] = None, actor: Optional[str] = None) -> int:
+    with _lock:
+        cur = _conn.execute(
+            "INSERT INTO suppressions (created_at, subject, model, until, reason, actor) "
+            "VALUES (?,?,?,?,?,?)",
+            (_now(), subject, model, until, reason, actor),
+        )
+        _conn.commit()
+        return cur.lastrowid
+
+
+_SUPCOLS = ["id", "created_at", "subject", "model", "until", "reason", "actor"]
+
+
+def query_suppressions(active_only: bool = True) -> list[dict]:
+    """Current allowlist entries. active_only drops entries whose 'until' has passed."""
+    with _lock:
+        rows = _conn.execute(
+            f"SELECT {', '.join(_SUPCOLS)} FROM suppressions ORDER BY id DESC").fetchall()
+    now = _now()
+    out = []
+    for r in rows:
+        d = dict(zip(_SUPCOLS, r))
+        expired = d["until"] is not None and d["until"] <= now
+        if active_only and expired:
+            continue
+        d["active"] = not expired
+        out.append(d)
+    return out
+
+
+def remove_suppression(suppression_id: int) -> bool:
+    with _lock:
+        cur = _conn.execute("DELETE FROM suppressions WHERE id = ?", (suppression_id,))
+        _conn.commit()
+        return cur.rowcount > 0
+
+
+def is_suppressed(subject: Optional[str], model: Optional[str] = None) -> bool:
+    """Whether an active allowlist entry mutes this (subject, model). A NULL-model entry matches
+    any model; 'until' NULL means indefinite. ISO-8601 UTC strings compare lexicographically."""
+    if subject is None:
+        return False
+    now = _now()
+    q = ("SELECT 1 FROM suppressions WHERE subject = ? AND (until IS NULL OR until > ?) "
+         "AND (model IS NULL OR model = ?) LIMIT 1")
+    with _lock:
+        return _conn.execute(q, (subject, now, model)).fetchone() is not None
 
 
 # ------------------------------------------------------------------ Act layer (C3)

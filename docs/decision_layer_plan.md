@@ -271,3 +271,23 @@ request also submitted for citable provenance).
 the recorded trail (start: N flagged identity verdicts from one subject within a window →
 a derived alert), plus `GET /decision/alerts`. Then C3 (Act), then E (AI layer: Qwen triage +
 RegMap-embedder RAG). Notebooks as needed per phase. Related: [[development-roadmap-status]].
+
+---
+
+## AQ — Analyst case-management workflow (Tier 1+2) — DONE 2026-07-12
+Built the human-in-the-loop layer on the alert queue, all driven from the browser console.
+- Store: alert lifecycle (assignee/resolution/resolved_at; status open|acknowledged|closed),
+  `alert_events` (audit trail), `suppressions` (allowlist); fns verdicts_by_ids,
+  update_alert, record/query_alert_events, label_alert_verdicts, add/query/remove/is_suppressed.
+- Policy honours the allowlist (is_suppressed) before raising a subject.
+- actions: manual_action + safe stubs disable_account / step_up_auth; MANUAL_ACTIONS.
+- API: GET /decision/alerts/{id} (detail), POST /acknowledge /assign /note /resolve /suppress
+  /act, GET /actions/available, GET+DELETE /suppressions. Overview keeps acknowledged visible.
+- Dashboard: case drawer (evidence + toolbar + triage + subject history + audit trail).
+- Feedback loop: resolve TP→malicious / FP→benign labels the alert's verdicts → trains
+  outcome-weighting. LLM advisory-only; posture actions are recorded stubs (no attack surface).
+- Tests: 17 pass. Exhibit 17 built. DEPLOYED: RedMap rebuilt + recreated (image in sync).
+
+**Next (bookmarked, NOT started):** `docs/browser_control_plan.md` — settings menu for the
+hard-coded limits + run compliance audit/scanner from the browser + full browser control plane.
+Deferred to a fresh session (usage-limit checkpoint). Related: [[browser-control-plan]].
