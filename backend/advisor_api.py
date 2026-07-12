@@ -94,6 +94,74 @@ def _authorize(target: str) -> None:
         raise HTTPException(status_code=403, detail=reason)
 
 
+# Scan providers offered in the UI. Physical is first and always available; cloud providers are
+# listed so the user can choose their environment, with an honest 'implemented' flag (only AWS is
+# wired today via boto3 — the others need their provider SDK/credentials).
+PROVIDERS = [
+    {"id": "physical", "label": "Physical / on-prem network", "kind": "network", "implemented": True,
+     "note": "TCP discovery of a CIDR or single host on a network you are authorized to scan"},
+    {"id": "aws", "label": "AWS (Amazon Web Services)", "kind": "cloud", "implemented": True,
+     "note": "Control-plane audit via boto3; uses your AWS credentials"},
+    {"id": "azure", "label": "Microsoft Azure", "kind": "cloud", "implemented": False,
+     "note": "Planned — requires Azure credentials / SDK"},
+    {"id": "gcp", "label": "Google Cloud (GCP)", "kind": "cloud", "implemented": False,
+     "note": "Planned — requires GCP credentials / SDK"},
+    {"id": "other", "label": "Other cloud / SaaS", "kind": "cloud", "implemented": False,
+     "note": "Planned"},
+]
+_IMPLEMENTED_PROVIDERS = {p["id"] for p in PROVIDERS if p["implemented"]}
+
+# Expanded, environment-determining interview questions (layered on top of control-advisor's base
+# set). They classify WHAT KIND of environment we are looking at so a compliance template can be
+# generated even without a scan. Same shape as the control-advisor questions.
+EXTRA_QUESTIONS = [
+    {"id": "deployment_model", "question": "Where does your infrastructure primarily run?",
+     "descriptions": {"on_premises": "Your own data center / office servers",
+                      "cloud": "Primarily public cloud", "hybrid": "A mix of on-prem and cloud",
+                      "unsure": "Not sure"}},
+    {"id": "cloud_providers", "question": "Which cloud providers do you use?", "multi": True,
+     "descriptions": {"aws": "Amazon Web Services", "azure": "Microsoft Azure",
+                      "gcp": "Google Cloud", "other": "Another provider", "none": "None"}},
+    {"id": "has_ot_ics", "question": "Do you operate industrial / OT systems (SCADA, PLCs, building "
+                                     "management, medical devices)?",
+     "descriptions": {"yes": "Yes", "no": "No", "unsure": "Not sure"}},
+    {"id": "remote_workforce", "question": "Do staff access systems remotely (VPN, remote desktop, "
+                                           "or SaaS from anywhere)?",
+     "descriptions": {"yes": "Yes", "no": "No"}},
+    {"id": "endpoints_managed", "question": "Are workstations and servers centrally managed "
+                                            "(patching, configuration, antivirus)?",
+     "descriptions": {"yes": "Yes", "partial": "Partially", "no": "No", "unsure": "Not sure"}},
+]
+
+
+def _classify_environment(answers: dict) -> dict:
+    """Derive a short 'what kind of environment' profile from the interview answers."""
+    dep = answers.get("deployment_model") or ("hybrid" if answers.get("cloud_providers") else "unsure")
+    clouds = [c for c in (answers.get("cloud_providers") or []) if c not in ("none",)]
+    ot = answers.get("has_ot_ics") == "yes"
+    exposed = answers.get("internet_facing") == "yes"
+    bits = []
+    bits.append({"on_premises": "on-premises", "cloud": "cloud-hosted", "hybrid": "hybrid cloud/on-prem"}
+                .get(dep, "mixed"))
+    if clouds:
+        bits.append("cloud: " + ", ".join(clouds))
+    if ot:
+        bits.append("includes OT/ICS")
+    if exposed:
+        bits.append("internet-facing")
+    sector = answers.get("sector")
+    if sector and sector != "unsure":
+        bits.append(f"sector: {sector}")
+    return {"deployment_model": dep, "cloud_providers": clouds, "has_ot_ics": ot,
+            "internet_facing": exposed, "summary": "; ".join(bits)}
+
+
+@router.get("/providers")
+def get_providers():
+    """Scan providers the UI offers (physical first). `implemented` says which are wired today."""
+    return {"providers": PROVIDERS}
+
+
 # ------------------------------------------------------------------ environment
 @router.get("/environment")
 def get_environment():
@@ -108,8 +176,9 @@ def get_environment():
 
 # ------------------------------------------------------------------ scan + control mapping
 class AdvisorScan(BaseModel):
-    target: str = Field(..., description="a CIDR (e.g. 192.168.1.0/24) or single host/IP")
-    cloud: bool = Field(False, description="audit AWS via boto3 instead of a network scan")
+    target: str = Field("", description="a CIDR (e.g. 192.168.1.0/24) or single host/IP (network mode)")
+    provider: str = Field("physical", description="physical | aws | azure | gcp | other")
+    cloud: bool = Field(False, description="(legacy) treat as provider=aws")
     region: str = Field("us-east-1", description="AWS region (cloud mode)")
     top_k: int = Field(3, ge=1, le=10, description="controls per discovered category")
     timeout: float = Field(0.5, gt=0, le=5)
@@ -121,12 +190,10 @@ def advisor_scan(req: AdvisorScan):
     """Discover assets and map each discovered category to NIST 800-53 controls (via the RegMap
     embedder). Returns the raw scan report + the recommended controls per host."""
     _require_available()
-    if req.cloud:
-        try:
-            scan_report = cloud_scan.scan(region=req.region)
-        except Exception as e:
-            raise HTTPException(status_code=502, detail=f"cloud scan failed (credentials?): {e}")
-    else:
+    provider = "aws" if req.cloud else (req.provider or "physical").lower()
+    if provider == "physical":
+        if not req.target.strip():
+            raise HTTPException(status_code=400, detail="a target CIDR or host is required for a network scan")
         _authorize(req.target)
         try:
             scan_report = network_scan.scan(req.target, timeout=req.timeout, max_hosts=req.max_hosts)
@@ -134,6 +201,17 @@ def advisor_scan(req: AdvisorScan):
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"scan failed: {e}")
+    elif provider == "aws":
+        try:
+            scan_report = cloud_scan.scan(region=req.region)
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"AWS scan failed (check credentials): {e}")
+    elif provider in ("azure", "gcp", "other"):
+        raise HTTPException(status_code=501, detail=(
+            f"the '{provider}' provider is not wired yet — it needs that provider's credentials/SDK. "
+            "Physical network and AWS are available today."))
+    else:
+        raise HTTPException(status_code=400, detail=f"unknown provider '{provider}'")
     try:
         recommendations = control_mapper.recommend_for_scan(scan_report, top_k=req.top_k)
     except Exception as e:
@@ -150,13 +228,19 @@ def _question_payload(q: dict) -> dict:
 
 
 @router.get("/questions")
-def base_questions():
-    """The base environment questions (asked first), plus the business-name field and glossary."""
+def base_questions(expanded: bool = Query(False, description="include the expanded "
+                                          "environment-determining questions (for template mode)")):
+    """The base environment questions (asked first), plus the business-name field and glossary.
+    With expanded=true, also returns the extra questions that classify the environment type so a
+    compliance template can be generated without a scan."""
     _require_available()
+    questions = [_question_payload(q) for q in ca_interview.ENVIRONMENT_QUESTIONS]
+    if expanded:
+        questions += [_question_payload(q) for q in EXTRA_QUESTIONS]
     return {
         "business_name": {"id": "business_name", "question": "What is the organization / business name?",
                           "type": "text"},
-        "questions": [_question_payload(q) for q in ca_interview.ENVIRONMENT_QUESTIONS],
+        "questions": questions,
         "glossary": getattr(ca_interview, "GLOSSARY", {}),
     }
 
@@ -186,8 +270,9 @@ def followup_questions(req: FollowupReq):
 
 # ------------------------------------------------------------------ report generation
 class ReportReq(BaseModel):
-    scan_report: dict
-    recommendations: dict
+    scan_report: dict = Field(default_factory=dict, description="raw scan (empty for template-only mode)")
+    recommendations: dict = Field(default_factory=lambda: {"hosts": []},
+                                  description="mapped controls (empty for template-only mode)")
     answers: dict = Field(..., description="the interview answers (context)")
     with_language: bool = Field(False, description="LLM-drafted policy language + exec summary (slow; needs Qwen)")
 
@@ -216,8 +301,14 @@ def generate_report(req: ReportReq):
     flattened rows for on-screen display, and download links."""
     _require_available()
     context = dict(req.answers or {})
+    env_profile = _classify_environment(context)
+    context.setdefault("environment_profile", env_profile["summary"])
+    recommendations = dict(req.recommendations or {})
+    recommendations.setdefault("cidr", None)          # template-only mode has no scan/cidr
+    recommendations.setdefault("hosts", [])
+    scan_report = req.scan_report or {"cidr": None, "results": []}
     try:
-        final_report = ca_interview.prioritize_scan_recommendations(req.recommendations, context)
+        final_report = ca_interview.prioritize_scan_recommendations(recommendations, context)
         baseline = ca_interview.prioritize_baseline_controls(
             baseline_controls.load_baseline_controls(), context)
     except Exception as e:
@@ -253,7 +344,7 @@ def generate_report(req: ReportReq):
         files["json"] = "report.json"
         docx_path = outdir / "report.docx"
         docx_report.build_report(str(docx_path), final_report, baseline, context, summary,
-                                 drafts=drafts, scan_report=req.scan_report)
+                                 drafts=drafts, scan_report=scan_report)
         files["docx"] = "report.docx"
         xlsx_path = outdir / "report.xlsx"
         xlsx_report.build_report(str(xlsx_path), final_report, baseline, summary,
@@ -266,7 +357,7 @@ def generate_report(req: ReportReq):
     _REPORTS[report_id] = {"dir": str(outdir), "files": files, "business_name": biz,
                            "row_count": len(rows)}
     return {"report_id": report_id, "business_name": biz, "executive_summary": summary,
-            "llm_used": llm_used, "rows": rows, "files": files,
+            "environment_profile": env_profile, "llm_used": llm_used, "rows": rows, "files": files,
             "download_base": f"/advisor/report/{report_id}/"}
 
 

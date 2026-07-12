@@ -4,6 +4,32 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-12 — Scan fixes: physical/WAN scanning, network-type picker, modes, authz warning
+
+Diagnosed why scanning "wasn't working" and fixed the UX. Root causes: (1) WAN targets returned
+403 (no SCAN_ALLOW_ANY on the container), (2) the UI defaulted to 127.0.0.1 (the container
+itself). The physical LAN was actually reachable all along — the bridged container reaches the
+host LAN (10.0.0.0/24) via Docker NAT (verified: scanned the gateway, got open ports).
+- **RedMap recreated with `SCAN_ALLOW_ANY=1`** (user-authorized) so any target can be scanned;
+  the UI now gates every scan behind an "I am authorized to scan this target" checkbox + a
+  persistent authorized-use warning banner (SecureScan + Advisor).
+- **advisor_api**: `GET /advisor/providers` (physical FIRST, then aws [wired via boto3], azure/gcp/
+  other [planned, honest `implemented:false`]); `POST /advisor/scan` takes `provider` and returns
+  501 for unwired providers; `GET /advisor/questions?expanded=true` adds environment-determining
+  questions (deployment_model, cloud_providers, has_ot_ics, remote_workforce, endpoints_managed);
+  `_classify_environment` derives a profile; `POST /advisor/report` now supports TEMPLATE-ONLY
+  mode (no scan → baseline controls + questionnaire) and returns the environment profile.
+- **Advisor UI**: a **mode selector** — "Scan my environment" vs "Generate a compliance template"
+  (questionnaire-only, no scan); a **network-type picker** (physical first + AWS/Azure/GCP/Other,
+  planned ones disabled with a note); an always-available **Discover environment** button that
+  auto-fills the detected LAN range; authorization warning + ack; expanded interview in template
+  mode; environment-profile shown on the report.
+- **SecureScan UI**: authorized-use warning + ack checkbox + a Discover-environment button.
+- Tests: 4 new advisor tests (providers, expanded questions, 501, template-only report). Suite:
+  61 pass. Note: Azure/GCP scanning are UI options but not yet implemented (need provider SDKs).
+- Reminder: dashboard is still unauthenticated — with SCAN_ALLOW_ANY on, do NOT expose it beyond
+  localhost until BC.4 (login/auth) is built.
+
 ## 2026-07-12 — Browser control plane: menu + multi-tool UI + Compliance Advisor wired in
 
 Redesigned the RegMap browser interface into a full **control plane** — a menu + tool navigation
