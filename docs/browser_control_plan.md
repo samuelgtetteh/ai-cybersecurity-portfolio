@@ -26,6 +26,21 @@ at the point of use. The UI + validation + persistence are automatic.
 
 ---
 
+## BC.4 — App menu bar + user authentication (BOOKMARKED 2026-07-12, not started)
+User request: give the RegMap console a proper **application menu bar** (File / Edit / View /
+Settings) and add **user login / authentication** so users authenticate before accessing the
+system. Scope to design later:
+- **Menu bar:** File (export/download trail, new scan), Edit (manage suppressions/allowlist),
+  View (toggle panels, theme), Settings (opens the BC.1 settings drawer). A thin top menu above
+  the current header.
+- **Auth:** a login gate in front of the dashboard + API. Options to weigh: simple session
+  (username/password + hashed creds + signed cookie/JWT), or OIDC/SSO (Azure AD/Okta) to match
+  the enterprise-identity story. Must gate the state-mutating endpoints (resolve/suppress/act,
+  settings PATCH, /scan) — currently the dashboard is unauthenticated. Add roles later (analyst
+  vs. admin) so only admins can change settings / run scans.
+- Ties to BC.3's "auth gate before browser-triggered actions." Build auth BEFORE exposing
+  scanning/config broadly if the app is cloud-hosted.
+
 ## Original bookmark (BC.2 / BC.3 remain)
 
 ## What the user asked for
