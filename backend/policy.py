@@ -24,7 +24,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from verdict_store import (open_alert_exists, record_alert, recent_verdicts,
+import actions
+from verdict_store import (get_alert, recent_alert_exists, record_alert, recent_verdicts,
                            subject_outcome_history)
 
 
@@ -81,7 +82,7 @@ def evaluate(now: Optional[datetime] = None) -> list[int]:
     for subject, vs in by_subject.items():
         if len(vs) < IDENTITY_BURST_MIN:
             continue
-        if open_alert_exists("identity_burst", subject, since):
+        if recent_alert_exists("identity_burst", subject, since):
             continue
         severity = _weight_severity("high", subject, "identity")
         if severity is None:
@@ -94,7 +95,7 @@ def evaluate(now: Optional[datetime] = None) -> list[int]:
 
     # rule 2: ics_sustained — ICS has no per-account subject; count flagged ICS in the window
     ics = [v for v in flagged if v["model"] == "ics"]
-    if len(ics) >= ICS_SUSTAINED_MIN and not open_alert_exists("ics_sustained", None, since):
+    if len(ics) >= ICS_SUSTAINED_MIN and not recent_alert_exists("ics_sustained", None, since):
         created.append(record_alert(
             "ics_sustained", "ics", None, "high", WINDOW_SECONDS,
             [v["id"] for v in ics],
@@ -113,10 +114,17 @@ def evaluate(now: Optional[datetime] = None) -> list[int]:
             key = v["subject"]
         else:
             continue
-        if open_alert_exists("high_severity", key, since):
+        if recent_alert_exists("high_severity", key, since):
             continue
         created.append(record_alert(
             "high_severity", v["model"], key, "high", WINDOW_SECONDS, [v["id"]],
             detail={"score": score, "reason": "single verdict with an extreme anomaly score"}))
+
+    # Act layer (C3): fire responders for each newly-created alert (inline, best-effort).
+    for alert_id in created:
+        try:
+            actions.dispatch(get_alert(alert_id))
+        except Exception:
+            pass
 
     return created

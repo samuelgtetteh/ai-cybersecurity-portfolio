@@ -98,6 +98,19 @@ _conn.execute(
 )
 _conn.execute("CREATE INDEX IF NOT EXISTS idx_a_rule_subject ON alerts(rule, subject, id)")
 _conn.execute("CREATE INDEX IF NOT EXISTS idx_a_status ON alerts(status, id)")
+_conn.execute(
+    """
+    CREATE TABLE IF NOT EXISTS actions (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at  TEXT    NOT NULL,
+        alert_id    INTEGER NOT NULL,
+        action_type TEXT    NOT NULL,   -- 'log' | 'ticket' | 'webhook'
+        status      TEXT    NOT NULL,   -- 'ok' | 'failed' | 'skipped'
+        detail      TEXT                -- JSON
+    )
+    """
+)
+_conn.execute("CREATE INDEX IF NOT EXISTS idx_act_alert ON actions(alert_id, id)")
 _conn.execute("CREATE INDEX IF NOT EXISTS idx_v_model_id ON verdicts(model, id)")
 _conn.execute("CREATE INDEX IF NOT EXISTS idx_v_subject_id ON verdicts(subject, id)")
 _conn.execute("CREATE INDEX IF NOT EXISTS idx_v_flagged_id ON verdicts(flagged, id)")
@@ -353,10 +366,12 @@ def subject_outcome_history(subject: Optional[str], model: Optional[str] = None)
     return h
 
 
-def open_alert_exists(rule: str, subject: Optional[str], since_iso: str) -> bool:
-    """Whether an open alert for this (rule, subject) already exists within the window —
-    used to avoid re-alerting an ongoing burst. Makes evaluate() idempotent."""
-    q = "SELECT 1 FROM alerts WHERE rule = ? AND status = 'open' AND created_at >= ?"
+def recent_alert_exists(rule: str, subject: Optional[str], since_iso: str) -> bool:
+    """Whether an alert (ANY status) for this (rule, subject) already exists within the
+    window. Dedup makes evaluate() idempotent, and — by counting closed alerts too — an
+    analyst's close stays sticky for the window instead of immediately re-firing on
+    continued activity."""
+    q = "SELECT 1 FROM alerts WHERE rule = ? AND created_at >= ?"
     args: list = [rule, since_iso]
     if subject is None:
         q += " AND subject IS NULL"
@@ -398,6 +413,61 @@ def query_alerts(status: Optional[str] = None, model: Optional[str] = None,
         d = dict(zip(_ACOLS, r))
         if d.get("verdict_ids"):
             d["verdict_ids"] = json.loads(d["verdict_ids"])
+        if d.get("detail"):
+            d["detail"] = json.loads(d["detail"])
+        out.append(d)
+    return out
+
+
+def get_alert(alert_id: int) -> Optional[dict]:
+    with _lock:
+        rows = _conn.execute(
+            f"SELECT {', '.join(_ACOLS)} FROM alerts WHERE id = ?", (alert_id,)).fetchall()
+    if not rows:
+        return None
+    d = dict(zip(_ACOLS, rows[0]))
+    if d.get("verdict_ids"):
+        d["verdict_ids"] = json.loads(d["verdict_ids"])
+    if d.get("detail"):
+        d["detail"] = json.loads(d["detail"])
+    return d
+
+
+def close_alert(alert_id: int) -> bool:
+    with _lock:
+        cur = _conn.execute("UPDATE alerts SET status = 'closed' WHERE id = ?", (alert_id,))
+        _conn.commit()
+        return cur.rowcount > 0
+
+
+# ------------------------------------------------------------------ Act layer (C3)
+_ACTCOLS = ["id", "created_at", "alert_id", "action_type", "status", "detail"]
+
+
+def record_action(alert_id: int, action_type: str, status: str,
+                  detail: Optional[dict] = None) -> int:
+    with _lock:
+        cur = _conn.execute(
+            "INSERT INTO actions (created_at, alert_id, action_type, status, detail) "
+            "VALUES (?,?,?,?,?)",
+            (_now(), alert_id, action_type, status,
+             json.dumps(detail) if detail is not None else None),
+        )
+        _conn.commit()
+        return cur.lastrowid
+
+
+def query_actions(alert_id: Optional[int] = None, limit: int = 100) -> list[dict]:
+    q = f"SELECT {', '.join(_ACTCOLS)} FROM actions"
+    args: list = []
+    if alert_id is not None:
+        q += " WHERE alert_id = ?"; args.append(alert_id)
+    q += " ORDER BY id DESC LIMIT ?"; args.append(int(limit))
+    with _lock:
+        rows = _conn.execute(q, args).fetchall()
+    out = []
+    for r in rows:
+        d = dict(zip(_ACTCOLS, r))
         if d.get("detail"):
             d["detail"] = json.loads(d["detail"])
         out.append(d)

@@ -17,8 +17,8 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 import policy
-from verdict_store import (metrics, query_alerts, query_requests, query_verdicts,
-                           set_ground_truth, stats)
+from verdict_store import (close_alert, metrics, query_actions, query_alerts,
+                           query_requests, query_verdicts, set_ground_truth, stats)
 
 router = APIRouter(prefix="/decision", tags=["decision"])
 
@@ -93,6 +93,23 @@ def run_evaluate():
     """Explicitly run the policy rules over the current window; returns any new alert ids."""
     created = policy.evaluate()
     return {"created_alert_ids": created, "count": len(created)}
+
+
+@router.get("/actions")
+def get_actions(
+    alert_id: Optional[int] = Query(None, description="filter to one alert's actions"),
+    limit: int = Query(100, ge=1, le=1000),
+):
+    """Audit of responses the Act layer took (log / ticket / webhook) per alert."""
+    return query_actions(alert_id=alert_id, limit=limit)
+
+
+@router.post("/alerts/{alert_id}/close")
+def close(alert_id: int):
+    """Analyst resolution: mark an alert closed (removes it from the open queue)."""
+    if not close_alert(alert_id):
+        raise HTTPException(status_code=404, detail=f"no alert with id {alert_id}")
+    return {"alert_id": alert_id, "status": "closed"}
 
 
 @router.get("/health")
