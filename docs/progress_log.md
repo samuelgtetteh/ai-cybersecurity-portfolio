@@ -4,6 +4,20 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-12 — Live monitoring dashboard (SSE) replaces Swagger
+
+Built a real-time operations console served at `/` (Swagger moved to background at /docs) so the
+live decisioning is visible without clicking API endpoints.
+- `backend/dashboard/index.html`: self-contained SSE console — status bar (LIVE pulse, events,
+  events/min, open alerts, log-vs-cap), 3 process cards (Identity/OT-ICS/Compliance w/ live
+  precision/recall), live decision feed (verdicts stream in, flagged highlighted), priority-sorted
+  alert queue (why=triage / close / reassess), response-actions ticker.
+- `GET /decision/overview` (aggregated snapshot) + `GET /decision/stream` (SSE push, init +
+  incremental new verdicts every ~1.5s); `verdict_store.verdicts_since`/`max_verdict_id`; `/` serves
+  the dashboard. Dockerfile COPYs backend/dashboard. 35 tests pass.
+- DEPLOYED live: RedMap rebuilt + recreated (restart-persistent, verdict volume); dashboard at
+  http://localhost:2500/ , SSE confirmed pushing. Open the URL to watch decisions in real time.
+
 ## 2026-07-12 — Decision layer: FIFO retention (bounded live-monitoring log)
 
 The verdict trail is a live-monitoring log and was growing unbounded (~24.5k rows and counting).
