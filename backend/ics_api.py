@@ -20,8 +20,10 @@ from typing import Dict
 import joblib
 import torch
 import torch.nn as nn
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
+
+from verdict_store import record_verdict_safe
 
 router = APIRouter(prefix="/ics", tags=["ics"])
 
@@ -101,7 +103,7 @@ class IcsResult(BaseModel):
 
 
 @router.post("/score", response_model=IcsResult)
-def score_reading(payload: SensorReading) -> IcsResult:
+def score_reading(payload: SensorReading, request: Request) -> IcsResult:
     missing = [f for f in FEATURE_ORDER if f not in payload.readings]
     row = [payload.readings.get(f, BASELINE_READING[f]) for f in FEATURE_ORDER]
 
@@ -110,9 +112,18 @@ def score_reading(payload: SensorReading) -> IcsResult:
         x = torch.tensor(scaled, dtype=torch.float32)
         recon = model(x)
         error = torch.mean((recon - x) ** 2).item()
+    is_anomaly = error > THRESHOLD
+
+    # Record layer: persist the verdict. Score is the reconstruction error; a single
+    # shared sensor stream has no per-account subject, so subject is left null.
+    request.state.verdict_id = record_verdict_safe(
+        model="ics", flagged=is_anomaly, score=round(error, 6),
+        subject=None,
+        detail={"threshold": THRESHOLD, "missing_field_count": len(missing)},
+    )
 
     return IcsResult(
-        is_anomaly=error > THRESHOLD,
+        is_anomaly=is_anomaly,
         reconstruction_error=round(error, 6),
         threshold=THRESHOLD,
         missing_fields=missing,

@@ -22,8 +22,10 @@ from typing import Optional
 
 import joblib
 import pandas as pd
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
+
+from verdict_store import record_verdict_safe
 
 router = APIRouter(prefix="/identity", tags=["identity"])
 
@@ -95,7 +97,7 @@ class AnomalyResult(BaseModel):
 
 
 @router.post("/score", response_model=AnomalyResult)
-def score_event(event: LoginEvent) -> AnomalyResult:
+def score_event(event: LoginEvent, request: Request) -> AnomalyResult:
     ts = event.timestamp or datetime.now(timezone.utc)
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=timezone.utc)
@@ -136,9 +138,20 @@ def score_event(event: LoginEvent) -> AnomalyResult:
 
     scaled = scaler.transform(features_df)
     score = float(model.decision_function(scaled)[0])
+    is_anomaly = score < 0
+
+    # Record layer: persist the verdict keyed by src_user, so the Decide layer can
+    # later apply per-account windowed rules (e.g. repeated anomalies from one user).
+    request.state.verdict_id = record_verdict_safe(
+        model="identity", flagged=is_anomaly, score=round(score, 6),
+        subject=event.src_user, event_time=ts,
+        detail={"src_pc": event.src_pc, "auth_type": event.auth_type,
+                "logon_type": event.logon_type, "success": event.success,
+                "hourly_count": hourly_count, "unique_pcs": unique_pcs},
+    )
 
     return AnomalyResult(
-        is_anomaly=score < 0,
+        is_anomaly=is_anomaly,
         anomaly_score=round(score, 6),
         hourly_count=hourly_count,
         unique_pcs=unique_pcs,
