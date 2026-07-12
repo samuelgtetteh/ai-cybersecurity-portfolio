@@ -18,3 +18,8 @@ try:
 except FileNotFoundError:
     pass
 os.environ["VERDICT_DB"] = str(_TEST_DB)
+
+# Keep the suite deterministic and fast: no LLM in tests (assess() then returns the
+# deterministic severity-based default). LLM behaviour is exercised separately, not in CI.
+os.environ["AI_TRIAGE_LLM"] = "0"
+os.environ.pop("LLM_SERVICE_URL", None)

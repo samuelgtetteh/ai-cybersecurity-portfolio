@@ -188,6 +188,45 @@ templated works in-container now; full LLM needs Qwen added to the image, ~3 GB 
 choice, deferred). **Next: build Exhibit 16** documenting the live decisioning system as NIW evidence
 (coverage/metrics/alerts/actions/triage), mirroring the Exhibit 14 style.
 
+## Phase E2 build tracker — LLM triage prioritization via a sidecar (IN PROGRESS)
+Started 2026-07-12. Make the LLM *improve how decisions are handled* (queue ordering), safely.
+
+**Principle:** the LLM is ADVISORY, never authoritative (hallucination + prompt-injection risk — it
+reads attacker-controlled fields). It re-ranks/labels; deterministic rules + humans enforce.
+
+**Design:**
+- Every alert gets a DETERMINISTIC default priority from severity at creation (high=4, medium=2,
+  low=1; scale 1-5), so the queue is ordered instantly with no LLM in the hot path.
+- The LLM REFINES priority + disposition (escalate | monitor | likely_false_positive) + rationale
+  on demand via `POST /decision/alerts/{id}/reassess` (and batch `POST /decision/reassess`).
+  Priority is CLAMPED to a severity floor (high>=3, medium>=2, low>=1) so the model can re-rank but
+  never bury a high-severity alert.
+- LLM access via `backend/llm_client.py`: call the **sidecar** service (`LLM_SERVICE_URL`) if set,
+  else fall back to in-process Qwen (dev). `ai_triage` is refactored to use this one client.
+- **Sidecar** (`llm-service/`): its own container hosting Qwen behind `POST /generate`; keeps the API
+  image lean and isolates the model. RedMap reaches it via `LLM_SERVICE_URL`.
+
+**Build checklist:**
+- [x] **E2.1** DONE — `backend/llm_client.py` (`generate()` → sidecar via `LLM_SERVICE_URL` else
+  in-process Qwen; `available()`); `ai_triage` refactored to use it.
+- [x] **E2.2** DONE — `ai_triage.assess(alert)` → `{priority, disposition, rationale, llm_used}`
+  (RAG context + subject history + LLM JSON, validated + clamped to severity floor).
+- [x] **E2.3** DONE — `verdict_store`: alerts priority/disposition/rationale (+migration); default
+  priority from severity at creation (high=4/med=2/low=1); `set_disposition`; queue ORDER BY priority.
+- [x] **E2.4** DONE — `decision_api`: `POST /decision/alerts/{id}/reassess` + `POST /decision/reassess`.
+- [x] **E2.5** DONE — `llm-service/` shared sidecar (app + Dockerfile + requirements + README). Per the
+  user's steer, the model is **mounted** (`-v models/qwen2.5-1.5b-instruct:/model`), NOT copied/
+  re-downloaded; one instance serves the whole project (backend now; Control Advisor can adopt it).
+- [x] **E2.6** DONE — 32-test suite green (LLM off in tests → deterministic); local-LLM reassess
+  verified: disposition=escalate, priority clamped to floor, guardrails hold. Dockerfile COPYs
+  llm_client.py.
+
+**RESUME POINTER (E2):** ✅ E2 CODE COMPLETE + VERIFIED + committed. Optional deploy (heavy):
+1. `docker build -t llm-service llm-service`
+2. `MSYS_NO_PATHCONV=1 docker run -d --name llm-service -p 2600:8000 -v "<repo>/models/qwen2.5-1.5b-instruct:/model:ro" -e MODEL_PATH=/model llm-service`
+3. recreate RedMap adding `-e LLM_SERVICE_URL=http://host.docker.internal:2600` (+ existing VERDICT_DB volume) so the live decision layer uses the shared sidecar for /reassess.
+Follow-on idea: point Control Advisor at the same sidecar (one model, many consumers).
+
 ## Design decisions
 - SQLite via stdlib (no new heavy dep); path from env `VERDICT_DB`, default
   `data/verdicts.db`. A production note (Redis/Postgres, decoupled stream) is documented,
