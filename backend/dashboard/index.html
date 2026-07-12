@@ -8,6 +8,12 @@
   :root{
     --bg:#0b0f17; --panel:#131a26; --panel2:#0f1622; --line:#243044; --txt:#e6edf6;
     --muted:#8aa0bd; --accent:#4da3ff; --ok:#2ecc71; --warn:#ffb020; --crit:#ff5470; --pill:#1b2536;
+    --flash:rgba(77,163,255,.18);
+  }
+  :root[data-theme="light"]{
+    --bg:#f4f6fb; --panel:#ffffff; --panel2:#eef2f8; --line:#d9e0ec; --txt:#16202e;
+    --muted:#5b6b82; --accent:#2563eb; --ok:#17a34a; --warn:#b26a00; --crit:#d92d4b; --pill:#eef2f8;
+    --flash:rgba(37,99,235,.12);
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
@@ -40,9 +46,9 @@
   .btn{background:var(--pill);border:1px solid var(--line);color:var(--txt);border-radius:7px;padding:5px 10px;font-size:12px;cursor:pointer}
   .btn:hover{border-color:var(--accent)}
   .feed{max-height:62vh;overflow:auto}
-  .ev{display:grid;grid-template-columns:64px 78px 1fr auto;gap:8px;align-items:center;padding:7px 14px;border-bottom:1px solid #1a2434;font-variant-numeric:tabular-nums}
+  .ev{display:grid;grid-template-columns:64px 78px 1fr auto;gap:8px;align-items:center;padding:7px 14px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
   .ev:first-child{animation:flash .8s}
-  @keyframes flash{from{background:#1c2a3f}to{background:transparent}}
+  @keyframes flash{from{background:var(--flash)}to{background:transparent}}
   .ev.flag{background:rgba(255,84,112,.07)}
   .ev .t{color:var(--muted);font-size:12px}
   .badge{padding:1px 7px;border-radius:20px;font-size:11px;font-weight:700}
@@ -50,13 +56,13 @@
   .badge.alert{background:rgba(255,84,112,.18);color:var(--crit)}
   .tag{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:1px 6px;border:1px solid var(--line);border-radius:5px}
   table{width:100%;border-collapse:collapse}
-  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #1a2434;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);font-size:13px}
   th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
   .sev{font-weight:700}.sev.high{color:var(--crit)}.sev.medium{color:var(--warn)}.sev.low{color:var(--muted)}
   .prio{display:inline-block;min-width:20px;text-align:center;border-radius:6px;background:var(--pill);padding:1px 6px;font-weight:700}
   .why{color:var(--muted);font-size:12px;padding:0 10px 10px}
   .acts{max-height:26vh;overflow:auto}
-  .act{display:flex;gap:8px;align-items:center;padding:6px 14px;border-bottom:1px solid #1a2434;font-size:12px}
+  .act{display:flex;gap:8px;align-items:center;padding:6px 14px;border-bottom:1px solid var(--line);font-size:12px}
   .act .s.ok{color:var(--ok)}.act .s.skipped{color:var(--muted)}.act .s.failed{color:var(--crit)}
   @media(max-width:1000px){.cards{grid-template-columns:1fr}main{grid-template-columns:1fr}}
 </style>
@@ -71,6 +77,7 @@
   <div class="stat"><b id="s-alerts">–</b><span>open alerts</span></div>
   <div class="stat"><b id="s-db">–</b><span>log (used/cap)</span></div>
   <div class="stat"><b id="s-updated">–</b><span>updated</span></div>
+  <button class="btn" id="themebtn" title="toggle light / dark">☀</button>
   <a class="muted" href="/docs" title="raw API">API</a>
 </header>
 
@@ -99,6 +106,17 @@
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+// --- theme (light/dark) : remembers the choice, defaults to OS preference ---
+const THEME_KEY='regmap_theme';
+function applyTheme(t){ document.documentElement.dataset.theme=t; $('themebtn').textContent = t==='light'?'🌙':'☀'; }
+(function initTheme(){
+  const saved=localStorage.getItem(THEME_KEY);
+  const sys = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light':'dark';
+  applyTheme(saved || sys);
+})();
+$('themebtn').onclick=()=>{ const next=document.documentElement.dataset.theme==='light'?'dark':'light';
+  localStorage.setItem(THEME_KEY,next); applyTheme(next); };
 const feed = []; const FEED_MAX = 80;
 let rateWin = [];  // {t, n} rolling 60s window for events/min
 
