@@ -149,3 +149,21 @@ def test_reassess_is_advisory_and_clamped(client):
     assert r["llm_used"] is False                   # LLM off in tests
     assert r["priority"] >= 3                        # high-severity floor respected
     assert client.post("/decision/alerts/999999/reassess").status_code == 404
+
+
+# --- FIFO retention (kept last: it trims the shared verdict trail) -----------------
+
+def test_fifo_retention_evicts_oldest(client):
+    import verdict_store as vs
+    # ensure a batch of verdicts exists, and note the newest id
+    for i in range(15):
+        _login(client, f"ret{i}@DOM1", "C1", suspicious=False)
+    newest = vs.query_verdicts(limit=1)[0]["id"]
+    keep = 5
+    res = vs.enforce_retention(max_verdicts=keep, max_requests=10**9, max_actions=10**9)
+    assert res["verdicts"]["after"] == keep and res["verdicts"]["evicted"] > 0
+    survivors = vs.query_verdicts(limit=100)
+    assert len(survivors) == keep                          # bounded to the cap
+    ids = [s["id"] for s in survivors]
+    assert newest in ids                                   # newest kept
+    assert min(ids) == newest - keep + 1                   # exactly the last `keep` by id (FIFO)

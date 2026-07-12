@@ -145,6 +145,45 @@ _MALICIOUS = {"malicious", "attack", "anomaly", "anomalous", "suspicious", "posi
 _BENIGN = {"benign", "normal", "ok", "clean", "negative", "false", "0"}
 
 
+# --- FIFO retention -------------------------------------------------------------------
+# Bound each high-volume log table to a maximum row count, evicting the OLDEST rows first
+# (FIFO), so the live-monitoring trail cannot grow without limit. Caps are env-configurable;
+# 0/negative = unbounded. Trimming is batched (every RETENTION_TRIM_EVERY inserts) to amortize
+# cost, so a table may transiently exceed its cap by up to that many rows. The metrics/Decide
+# layers see the most recent window, which is far smaller than any cap, so eviction never
+# affects live detection or alerting.
+def _int_env(name, default):
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+MAX_VERDICTS = _int_env("MAX_VERDICTS", 100000)
+MAX_REQUESTS = _int_env("MAX_REQUESTS", 100000)
+MAX_ACTIONS = _int_env("MAX_ACTIONS", 50000)
+RETENTION_TRIM_EVERY = _int_env("RETENTION_TRIM_EVERY", 100)
+_ins_since_trim: dict = {"verdicts": 0, "requests": 0, "actions": 0}
+
+
+def _trim_locked(table: str, cap: int) -> None:
+    """Delete oldest rows so `table` keeps at most `cap` rows (FIFO by autoincrement id).
+    Assumes the lock is held; the caller commits."""
+    if cap and cap > 0:
+        _conn.execute(
+            f"DELETE FROM {table} WHERE id <= (SELECT COALESCE(MAX(id), 0) FROM {table}) - ?",
+            (cap,),
+        )
+
+
+def _auto_trim_locked(table: str, cap: int) -> None:
+    """Batched FIFO trim invoked on insert — trims once every RETENTION_TRIM_EVERY inserts."""
+    _ins_since_trim[table] = _ins_since_trim.get(table, 0) + 1
+    if _ins_since_trim[table] >= RETENTION_TRIM_EVERY:
+        _ins_since_trim[table] = 0
+        _trim_locked(table, cap)
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -177,6 +216,7 @@ def record_verdict(model: str, flagged: bool, score: Optional[float],
              None if score is None else float(score),
              json.dumps(detail) if detail is not None else None),
         )
+        _auto_trim_locked("verdicts", MAX_VERDICTS)
         _conn.commit()
         return cur.lastrowid
 
@@ -214,6 +254,7 @@ def record_request(method: str, path: str, client: Optional[str],
                 "VALUES (?,?,?,?,?,?)",
                 (_now(), method, path, client, status, latency_ms),
             )
+            _auto_trim_locked("requests", MAX_REQUESTS)
             _conn.commit()
             return cur.lastrowid
     except Exception:
@@ -277,6 +318,25 @@ def query_requests(limit: int = 100) -> list[dict]:
     return [dict(zip(cols, r)) for r in rows]
 
 
+def enforce_retention(max_verdicts: Optional[int] = None, max_requests: Optional[int] = None,
+                      max_actions: Optional[int] = None) -> dict:
+    """Immediately trim the high-volume log tables to their caps (FIFO, oldest evicted). Uses the
+    env-configured caps unless overridden. Returns per-table before/after/evicted counts. Run once
+    at import so an already-oversized DB is bounded on startup."""
+    caps = {"verdicts": MAX_VERDICTS if max_verdicts is None else max_verdicts,
+            "requests": MAX_REQUESTS if max_requests is None else max_requests,
+            "actions": MAX_ACTIONS if max_actions is None else max_actions}
+    out = {}
+    with _lock:
+        for table, cap in caps.items():
+            before = _conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            _trim_locked(table, cap)
+            after = _conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            out[table] = {"cap": cap, "before": before, "after": after, "evicted": before - after}
+        _conn.commit()
+    return out
+
+
 def stats() -> dict:
     with _lock:
         total = _conn.execute("SELECT COUNT(*) FROM verdicts").fetchone()[0]
@@ -290,8 +350,14 @@ def stats() -> dict:
         "verdicts": total, "flagged": flagged, "labeled": labeled,
         "audited_requests": reqs,
         "by_model": {m: {"count": c, "flagged": int(f)} for m, c, f in by},
+        "retention": {"max_verdicts": MAX_VERDICTS, "max_requests": MAX_REQUESTS,
+                      "max_actions": MAX_ACTIONS, "trim_every": RETENTION_TRIM_EVERY},
         "db_path": str(DB_PATH),
     }
+
+
+# Bound an already-large DB on startup (FIFO), so restarting the backend enforces the caps.
+enforce_retention()
 
 
 def metrics(model: Optional[str] = None) -> dict:
@@ -477,6 +543,7 @@ def record_action(alert_id: int, action_type: str, status: str,
             (_now(), alert_id, action_type, status,
              json.dumps(detail) if detail is not None else None),
         )
+        _auto_trim_locked("actions", MAX_ACTIONS)
         _conn.commit()
         return cur.lastrowid
 

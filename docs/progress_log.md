@@ -4,6 +4,21 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-12 — Decision layer: FIFO retention (bounded live-monitoring log)
+
+The verdict trail is a live-monitoring log and was growing unbounded (~24.5k rows and counting).
+Added a FIFO cap so the high-volume tables keep only the most recent N rows, oldest evicted first.
+- `verdict_store.py`: env-configurable caps `MAX_VERDICTS` (100k), `MAX_REQUESTS` (100k),
+  `MAX_ACTIONS` (50k), `RETENTION_TRIM_EVERY` (100); 0 = unbounded. Trim = `DELETE WHERE id <=
+  MAX(id)-cap` (FIFO by autoincrement id). Batched auto-trim on insert (record_verdict/request/action),
+  plus `enforce_retention()` run at startup (bounds an already-large DB) and exposed via
+  `POST /decision/retention/enforce`; caps shown in `/decision/stats`.
+- Eviction never affects detection: metrics/Decide use a recent window far smaller than any cap.
+- Verified: pytest FIFO test (trims to cap, keeps newest, evicts oldest) — 33 tests pass; manual run
+  of 500 inserts at cap=50 held the table at exactly 50 (ids 451-500).
+- NOTE: takes effect on the LIVE monitor only after RedMap is rebuilt+recreated with this code; the
+  default 100k cap doesn't shrink the current ~24.5k trail (set MAX_VERDICTS lower to bound tighter).
+
 ## 2026-07-12 — Decision layer, Phase E2: LLM triage prioritization + shared sidecar
 
 Makes the LLM *improve how decisions are handled* (queue ordering), safely and via a shared model.
