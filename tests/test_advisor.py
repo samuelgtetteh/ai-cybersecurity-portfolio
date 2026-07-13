@@ -75,6 +75,43 @@ def test_interpret_freetext_answers(client):
     assert isinstance(res["regulated_data"]["value"], list) and "phi_hipaa" in res["regulated_data"]["value"]
 
 
+def test_conversational_interview_flow(client, monkeypatch):
+    monkeypatch.setattr(A, "_warm_llm", lambda: None)     # don't load the real model in tests
+    monkeypatch.setattr(A, "_llm", lambda *a, **k: None)  # no model -> canonical question text
+    monkeypatch.setattr(A.ca_semantic, "interpret",
+                        lambda text, descs, multi=False: (([text] if multi else text), {"method": "exact_match"}))
+    st = client.post("/advisor/interview/start", json={"categories": []}).json()
+    sid = st["session_id"]
+    assert st["current_field"] == "business_name" and st["done"] is False and st["message"]
+    r = client.post("/advisor/interview/reply", json={"session_id": sid, "text": "Acme Clinic"}).json()
+    assert r["current_field"] == "sector" and r["captured"]["business_name"] == "Acme Clinic"
+    done = None
+    for _ in range(30):
+        rr = client.post("/advisor/interview/reply", json={"session_id": sid, "text": "no"}).json()
+        if rr.get("done"):
+            done = rr
+            break
+    assert done is not None, "interview should terminate"
+    ctx = done["context"]
+    assert ctx["business_name"] == "Acme Clinic"
+    for f in ["sector", "regulated_data", "internet_facing", "maturity", "deployment_model",
+              "cloud_providers", "has_ot_ics"]:
+        assert f in ctx, f"{f} should have been gathered"
+
+
+def test_interview_clarifies_once_then_advances(client, monkeypatch):
+    monkeypatch.setattr(A, "_warm_llm", lambda: None)
+    monkeypatch.setattr(A, "_llm", lambda *a, **k: None)
+    monkeypatch.setattr(A.ca_semantic, "interpret",
+                        lambda text, descs, multi=False: ("unsure", {"method": "semantic_low_confidence", "score": 0.1}))
+    sid = client.post("/advisor/interview/start", json={}).json()["session_id"]
+    client.post("/advisor/interview/reply", json={"session_id": sid, "text": "Acme"})  # -> sector
+    r = client.post("/advisor/interview/reply", json={"session_id": sid, "text": "dunno"}).json()
+    assert r.get("clarifying") is True and r["current_field"] == "sector"   # unclear -> clarify
+    r2 = client.post("/advisor/interview/reply", json={"session_id": sid, "text": "still dunno"}).json()
+    assert r2.get("clarifying") is not True   # second time accepted, no infinite clarify loop
+
+
 def test_unimplemented_provider_501(client):
     assert client.post("/advisor/scan", json={"provider": "azure"}).status_code == 501
 

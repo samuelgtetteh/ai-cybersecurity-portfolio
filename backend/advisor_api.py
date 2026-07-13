@@ -21,6 +21,7 @@ Design notes:
 import ipaddress
 import os
 import sys
+import threading
 import uuid
 from pathlib import Path
 from typing import List, Optional
@@ -52,6 +53,10 @@ try:
         import draft_language  # optional LLM step
     except Exception:
         draft_language = None
+    try:
+        import llm_interview as ca_llm  # Qwen access (shared with draft_language); may be absent
+    except Exception:
+        ca_llm = None
 except Exception as e:  # toolkit not present (e.g. not copied into the image)
     ADVISOR_AVAILABLE = False
     ADVISOR_IMPORT_ERROR = str(e)
@@ -344,6 +349,186 @@ def interpret_answers(req: InterpretReq):
         results[qid] = {"value": selected, "label": ", ".join(str(v) for v in vals),
                         "method": details.get("method"), "score": details.get("score")}
     return {"results": results}
+
+
+# ============================ Conversational interview (LLM-driven) ============================
+# A stateful chat interview: Qwen (via control-advisor's llm_interview) asks ONE contextual
+# question at a time and clarifies when needed, the RegMap embedder extracts each answer into a
+# structured field, and a deterministic checklist guarantees we still gather everything the
+# compliance mapping needs. Degrades to canonical question text if the LLM is unavailable.
+_INTERVIEWS: dict = {}
+# order the required environment facts are gathered in
+BASE_ORDER = ["sector", "regulated_data", "internet_facing", "maturity", "deployment_model",
+              "cloud_providers", "has_ot_ics", "remote_workforce", "endpoints_managed"]
+
+
+def _field_defs() -> dict:
+    defs = {}
+    for q in (list(ca_interview.ENVIRONMENT_QUESTIONS) + EXTRA_QUESTIONS
+              + list(getattr(ca_interview, "FOLLOWUP_QUESTIONS", []))):
+        defs[q["id"]] = q
+    return defs
+
+
+def _llm(messages, max_new_tokens=64):
+    """Best-effort Qwen call (never raises)."""
+    try:
+        if ca_llm is None:
+            return None
+        out = ca_llm._generate(messages, max_new_tokens=max_new_tokens)
+        return (out or "").strip() or None
+    except Exception:
+        return None
+
+
+def _warm_llm():
+    try:
+        if ca_llm is not None:
+            ca_llm._generate([{"role": "user", "content": "hi"}], max_new_tokens=1)
+    except Exception:
+        pass
+
+
+def _clean_q(txt):
+    if not txt:
+        return None
+    line = txt.strip().split("\n")[0].strip().strip('"').strip()
+    return line if 5 <= len(line) <= 240 else None
+
+
+def _brief_context(ctx: dict) -> str:
+    bits = []
+    for k in ("business_name", "sector", "deployment_model", "regulated_data"):
+        v = ctx.get(k)
+        if v:
+            bits.append(f"{k}={v if not isinstance(v, list) else '/'.join(v)}")
+    return ", ".join(bits) or "nothing yet"
+
+
+_SYS_ASK = ("You are a friendly cybersecurity compliance assistant interviewing someone about "
+            "their organization so you can recommend the right security controls. Ask EXACTLY ONE "
+            "short, plain-English question. Do NOT list multiple-choice options or letters. Keep it "
+            "to one sentence.")
+
+
+def _question_for(field_id: str, s: dict) -> str:
+    q = _field_defs().get(field_id, {})
+    intent = q.get("question", "")
+    msgs = [{"role": "system", "content": _SYS_ASK},
+            {"role": "user", "content": f"Known so far: {_brief_context(s['context'])}. "
+                                        f"Now ask the user, in your own words, about: {intent}"}]
+    return _clean_q(_llm(msgs)) or intent or "Tell me a bit more about your environment."
+
+
+def _clarify_for(field_id: str, text: str) -> str:
+    q = _field_defs().get(field_id, {})
+    examples = "; ".join(list(q.get("descriptions", {}).values())[:3])
+    msgs = [{"role": "system", "content": "You are a friendly compliance assistant. The user's "
+             "answer was unclear. Ask ONE short clarifying question, one sentence, no options."},
+            {"role": "user", "content": f"Topic: {q.get('question', '')}. The user said: "
+                                        f"'{text}'. Ask a brief clarifying question."}]
+    return _clean_q(_llm(msgs)) or f"Could you say a bit more? For example — {examples}"
+
+
+def _next_field(s: dict):
+    ctx = s["context"]
+    for fid in BASE_ORDER:
+        if fid not in ctx:
+            return fid
+    cats = set(s.get("categories") or [])
+    for q in getattr(ca_interview, "FOLLOWUP_QUESTIONS", []):
+        if q["id"] in ctx:
+            continue
+        trig = q.get("trigger")
+        try:
+            if trig and trig(cats, ctx):
+                return q["id"]
+        except Exception:
+            pass
+    return None
+
+
+class InterviewStart(BaseModel):
+    categories: List[str] = Field(default_factory=list, description="categories from a prior scan")
+
+
+@router.post("/interview/start")
+def interview_start(req: InterviewStart):
+    """Begin a conversational interview session. Returns the opening message; the client then POSTs
+    each user reply to /interview/reply. Qwen is warmed in the background so later turns are faster."""
+    _require_available()
+    sid = uuid.uuid4().hex[:12]
+    _INTERVIEWS[sid] = {"context": {}, "categories": req.categories or [],
+                        "current": "business_name", "clarified": set(), "status": "active"}
+    threading.Thread(target=_warm_llm, daemon=True).start()
+    msg = ("Hi! I'll ask a few quick questions about your organization and its IT environment, then "
+           "map it to the right NIST SP 800-53 controls. To start — what's the name of your "
+           "organization?")
+    return {"session_id": sid, "message": msg, "current_field": "business_name", "done": False,
+            "llm": ca_llm is not None}
+
+
+class InterviewReply(BaseModel):
+    session_id: str
+    text: str
+
+
+@router.post("/interview/reply")
+def interview_reply(req: InterviewReply):
+    """One conversational turn: capture the user's answer for the current field (embedder), clarify
+    once if unclear (Qwen), then ask the next needed question (Qwen) or finish with the gathered
+    context."""
+    s = _INTERVIEWS.get(req.session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="no such interview session")
+    if s["status"] != "active":
+        return {"session_id": req.session_id, "message": "This interview is already complete.",
+                "done": True, "context": s["context"]}
+    field = s["current"]
+    text = (req.text or "").strip()
+    captured = {}
+
+    if field == "business_name":
+        s["context"]["business_name"] = text or "the organization"
+        captured = {"business_name": s["context"]["business_name"]}
+    else:
+        q = _field_defs().get(field, {})
+        descs = q.get("descriptions", {})
+        multi = bool(q.get("multi"))
+        try:
+            selected, details = ca_semantic.interpret(text, descs, multi=multi)
+        except Exception:
+            selected, details = ("unsure" if not multi else ["unsure"]), {"method": "error"}
+        method = details.get("method", "")
+        score = details.get("score")
+        low = (not multi) and (("low_confidence" in method) or (score is not None and score < 0.33))
+        if low and field not in s["clarified"]:
+            s["clarified"].add(field)
+            return {"session_id": req.session_id, "message": _clarify_for(field, text),
+                    "current_field": field, "done": False, "clarifying": True, "captured": {}}
+        s["context"][field] = selected
+        captured = {field: (", ".join(selected) if isinstance(selected, list) else str(selected))}
+
+    nxt = _next_field(s)
+    if nxt is None:
+        s["status"] = "complete"
+        return {"session_id": req.session_id, "done": True, "captured": captured,
+                "context": s["context"],
+                "message": "Thanks — I have what I need. I'll now map your environment to the right "
+                           "controls; continue to generate your report."}
+    s["current"] = nxt
+    return {"session_id": req.session_id, "message": _question_for(nxt, s),
+            "current_field": nxt, "done": False, "captured": captured}
+
+
+@router.get("/interview/{session_id}")
+def interview_state(session_id: str):
+    """Current gathered context for a session (for debugging / resuming)."""
+    s = _INTERVIEWS.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="no such interview session")
+    return {"session_id": session_id, "status": s["status"], "current_field": s["current"],
+            "context": s["context"]}
 
 
 # ------------------------------------------------------------------ report generation
