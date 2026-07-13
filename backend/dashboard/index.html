@@ -140,6 +140,10 @@
   .qcard .q{font-weight:600;margin-bottom:8px}
   .qopt{display:flex;gap:8px;align-items:flex-start;padding:5px 0;font-size:13px;cursor:pointer}
   .qopt .d{color:var(--muted);font-size:12px}
+  .qta{width:100%;background:var(--pill);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:8px 9px;font-size:13px;resize:vertical;font-family:inherit}
+  .qta:focus{outline:none;border-color:var(--accent)}
+  .understood{font-size:12px;color:var(--ok);margin-top:5px;min-height:1px}
+  .qcard details summary{cursor:pointer;color:var(--muted);font-size:12px;margin-top:6px}
   .steps{display:flex;gap:8px;margin-bottom:16px;max-width:640px}
   .step{flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:12px;color:var(--muted);background:var(--panel);text-align:center}
   .step.on{border-color:var(--accent);color:var(--txt)}
@@ -692,35 +696,32 @@ async function caStartInterview(){
   }catch(e){ $('ca-questions').innerHTML='could not load questions'; }
 }
 function renderQuestion(q){
-  const opts=q.options.map(o=>{
-    const inp = q.multi
-      ? `<input type="checkbox" data-qid="${q.id}" value="${esc(o.value)}">`
-      : `<input type="radio" name="q_${q.id}" data-qid="${q.id}" value="${esc(o.value)}">`;
-    return `<label class="qopt">${inp}<span><b>${esc(o.value)}</b> <span class="d">${esc(o.description)}</span></span></label>`;
-  }).join('');
-  return `<div class="qcard"><div class="q">${esc(q.question)}${q.multi?' <span class="note">(choose all that apply)</span>':''}</div>${opts}</div>`;
-}
-function collectAnswers(){
-  const ans={};
-  document.querySelectorAll('#ca-questions [data-qid]').forEach(el=>{
-    const id=el.dataset.qid;
-    if(el.type==='text'){ if(el.value.trim()) ans[id]=el.value.trim(); }
-    else if(el.type==='checkbox'){ if(el.checked){ (ans[id]=ans[id]||[]).push(el.value); } }
-    else if(el.type==='radio'){ if(el.checked) ans[id]=el.value; }
-  });
-  return ans;
+  const examples=q.options.map(o=>`<b>${esc(o.value)}</b> — ${esc(o.description)}`).join('<br>');
+  return `<div class="qcard"><div class="q">${esc(q.question)}</div>
+    <textarea class="qta" data-qid="${q.id}" rows="2" placeholder="Answer in your own words…"></textarea>
+    <div class="understood" id="u-${esc(q.id)}"></div>
+    <details><summary>examples / what this means</summary><div class="note" style="margin-top:6px;line-height:1.7">${examples}</div></details></div>`;
 }
 async function caContinue(){
-  const ans=collectAnswers();
-  caAnswers={...caAnswers, ...ans};
+  const texts={};
+  document.querySelectorAll('#ca-questions [data-qid]').forEach(el=>{ if(el.value.trim()) texts[el.dataset.qid]=el.value.trim(); });
+  if(!texts.business_name && !Object.keys(caAnswers).length){ alert('Please at least enter your company name.'); return; }
+  $('ca-next').textContent='Interpreting…'; $('ca-next').disabled=true;
+  try{
+    const d=await (await fetch('/advisor/interpret',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({responses:texts})})).json();
+    Object.entries(d.results||{}).forEach(([qid,res])=>{ caAnswers[qid]=res.value;
+      const u=$('u-'+qid); if(u && qid!=='business_name') u.textContent = '✓ understood: '+res.label + (res.method&&res.method.indexOf('low')>=0?' (low confidence — refine if wrong)':''); });
+  } catch(e){ alert('interpretation failed'); $('ca-next').textContent='Continue'; $('ca-next').disabled=false; return; }
+  $('ca-next').textContent='Continue'; $('ca-next').disabled=false;
   if(!caFollowLoaded){
-    // fetch adaptive follow-ups based on answers + scan categories
     try{ const r=await fetch('/advisor/followups',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({answers:caAnswers,categories:caCats})});
       const d=await r.json(); caFollowLoaded=true;
       if((d.questions||[]).length){
         $('ca-questions').insertAdjacentHTML('beforeend',
-          '<div class="setgrp">Follow-up questions</div>'+d.questions.map(renderQuestion).join(''));
+          '<div class="setgrp">A few follow-up questions</div>'+d.questions.map(renderQuestion).join(''));
+        $('ca-next').textContent='Continue to report →';
         return; // stay on step 2 to answer follow-ups
       }
     }catch(e){}
