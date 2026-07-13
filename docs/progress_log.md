@@ -4,6 +4,17 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-12 — Scan target fixes (whitespace + oversized range)
+
+Two bugs the user hit in the Advisor scan (screenshots):
+- `10.0.0.1 / 24` (spaces around the slash) failed with "could not resolve …" — the target was
+  treated as a hostname. Fix: `_normalize_target()` strips all whitespace and canonicalizes a CIDR
+  to its network form ("10.0.0.1 / 24" -> "10.0.0.0/24"); applied in advisor `/scan` and SecureScan.
+- "Discover environment" auto-filled `172.17.0.0/16` (the container's bridge netmask) -> "over the
+  256 limit". Fix: `/advisor/environment` now caps each interface's `suggested_range` to a **/24**.
+- Also: exposed a **Max hosts** field in the Advisor server-scan form (default 256, up to 4096;
+  physical only) and raised the API cap to 4096; UI trims whitespace before sending.
+
 ## 2026-07-12 — Advisor Phase 1 (conversational interview) + on-prem scan agent
 
 Two things the user flagged after the control-plane redesign.

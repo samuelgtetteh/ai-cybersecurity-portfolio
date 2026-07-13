@@ -74,6 +74,17 @@ def _require_available():
                             detail=f"compliance advisor unavailable: {ADVISOR_IMPORT_ERROR}")
 
 
+def _normalize_target(raw: str) -> str:
+    """Trim whitespace (incl. spaces around a '/') and canonicalize a CIDR to its network form,
+    so '10.0.0.1 / 24' -> '10.0.0.0/24'. Leaves hostnames/single IPs as the whitespace-stripped
+    string."""
+    t = "".join((raw or "").split())
+    try:
+        return str(ipaddress.ip_network(t, strict=False))
+    except ValueError:
+        return t
+
+
 def _authorize(target: str) -> None:
     """Authorize a scan target (single host or CIDR). Reuses the SecureScan allowlist policy."""
     allow_any = bool(scan_authz and scan_authz.allow_any())
@@ -182,9 +193,18 @@ def get_environment():
     instance/credentials. Powers the 'what can I scan?' prompt in the UI."""
     _require_available()
     try:
-        return environment_detect.detect_environment()
+        env = environment_detect.detect_environment()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"environment detection failed: {e}")
+    # Cap each interface's suggested scan range to a /24 — a raw netmask can be a /16 (65k hosts),
+    # which is far too large to TCP-scan; a /24 is the sensible default to pre-fill.
+    for itf in env.get("local_interfaces", []):
+        ip = itf.get("ip")
+        try:
+            itf["suggested_range"] = str(ipaddress.ip_network(f"{ip}/24", strict=False))
+        except (ValueError, TypeError):
+            pass
+    return env
 
 
 # ------------------------------------------------------------------ scan + control mapping
@@ -195,7 +215,7 @@ class AdvisorScan(BaseModel):
     region: str = Field("us-east-1", description="AWS region (cloud mode)")
     top_k: int = Field(3, ge=1, le=10, description="controls per discovered category")
     timeout: float = Field(0.5, gt=0, le=5)
-    max_hosts: int = Field(256, ge=1, le=1024)
+    max_hosts: int = Field(256, ge=1, le=4096)
 
 
 @router.post("/scan")
@@ -207,9 +227,10 @@ def advisor_scan(req: AdvisorScan):
     if provider == "physical":
         if not req.target.strip():
             raise HTTPException(status_code=400, detail="a target CIDR or host is required for a network scan")
-        _authorize(req.target)
+        target = _normalize_target(req.target)
+        _authorize(target)
         try:
-            scan_report = network_scan.scan(req.target, timeout=req.timeout, max_hosts=req.max_hosts)
+            scan_report = network_scan.scan(target, timeout=req.timeout, max_hosts=req.max_hosts)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
