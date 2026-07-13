@@ -4,6 +4,32 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-12 — Advisor Phase 1 (conversational interview) + on-prem scan agent
+
+Two things the user flagged after the control-plane redesign.
+**(1) Interview UX restored to conversational free-text.** The redesign had regressed it to
+radio/checkbox ticks; the design is natural-language. Now each question is a free-text box and the
+RegMap embedder interprets it (no LLM), company name first, with an inline "understood: X" review.
+- `POST /advisor/interpret {responses:{qid:text}}` → per-question resolved value(s) + label +
+  confidence via `semantic_answer` (embedder). Enriched the expanded yes/no descriptions so binary
+  questions interpret reliably. Committed 9a5d3e7.
+
+**(2) On-prem scan AGENT (scan a private network a cloud console can't reach).** A cloud host can
+scan any internet-reachable target's PERIMETER, but not devices inside a NAT'd LAN. The agent is a
+small pure-Python script the user runs on a host INSIDE the target network; it scans locally and
+submits results back, which are mapped to NIST controls and feed the Advisor.
+- `backend/agent/agent.py` — self-contained stdlib TCP connect scanner (port→category table),
+  auto-detects local /24 or takes a target; fetches job config, scans, POSTs results. User-run
+  (explicit approval), token-scoped, prints what it does.
+- `backend/agent_api.py` (`/agent`): POST /jobs (token-scoped job + ready-to-run commands),
+  GET /agent.py (download), GET /jobs/{id}/config?token (agent scope), POST /jobs/{id}/results
+  (token-auth → control_mapper), GET /jobs/{id} (console polls; returns scan+recommendations when
+  complete, never the token), GET /jobs.
+- UI: Advisor scan step now has a **scan-method selector** — *Scan from server (target/WAN)* vs
+  *Use an agent*. Server path notes that a WAN/public-IP scan = perimeter only. Agent path creates
+  a job, shows PowerShell/bash run commands, and polls until results arrive → Start interview.
+- Tests: `tests/test_agent.py` (2) job lifecycle + token auth + script download. Suite green.
+
 ## 2026-07-12 — Native Windows run for true physical-LAN scanning (Docker can't give a LAN IP)
 
 User asked to give the Docker container the same IP as the physical LAN. That is NOT possible on

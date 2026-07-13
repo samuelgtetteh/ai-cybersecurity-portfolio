@@ -262,15 +262,32 @@
       <div id="ca-env" class="envbox" style="margin:10px 0;display:none"></div>
       <!-- scan mode -->
       <div id="ca-scanbox">
-        <div class="form">
-          <div class="field"><label>Network type</label><select id="ca-provider"></select></div>
-          <div class="field" id="ca-target-field"><label>Target (CIDR or host)</label><input id="ca-target" placeholder="e.g. 10.0.0.0/24 or 10.0.0.5"></div>
-          <div class="field" id="ca-region-field" style="display:none"><label>AWS region</label><input id="ca-region" value="us-east-1"></div>
+        <div class="ackrow" style="gap:18px;flex-wrap:wrap">
+          <label><input type="radio" name="camethod" value="server" checked> Scan from server (a target / WAN I point to)</label>
+          <label><input type="radio" name="camethod" value="agent"> Use an agent (scan a private network from inside it)</label>
         </div>
-        <div id="ca-provider-note" class="note" style="margin:6px 0"></div>
-        <div class="ackrow"><input type="checkbox" id="ca-ack"><label for="ca-ack">I am authorized to scan this target.</label></div>
-        <button class="btn primary" id="ca-scan">Scan &amp; map controls</button>
-        <div id="ca-scanout" style="margin-top:12px"></div>
+        <!-- server-side scan -->
+        <div id="ca-servermethod">
+          <div class="form">
+            <div class="field"><label>Network type</label><select id="ca-provider"></select></div>
+            <div class="field" id="ca-target-field"><label>Target (host / CIDR / WAN IP)</label><input id="ca-target" placeholder="e.g. 10.0.0.0/24, a host, or a public IP"></div>
+            <div class="field" id="ca-region-field" style="display:none"><label>AWS region</label><input id="ca-region" value="us-east-1"></div>
+          </div>
+          <div id="ca-provider-note" class="note" style="margin:6px 0"></div>
+          <div class="note" style="margin:4px 0">Scanning a public/WAN IP checks that address's <b>internet-facing perimeter</b> — it can't see devices inside a home/office LAN behind NAT (use an agent for that).</div>
+          <div class="ackrow"><input type="checkbox" id="ca-ack"><label for="ca-ack">I am authorized to scan this target.</label></div>
+          <button class="btn primary" id="ca-scan">Scan &amp; map controls</button>
+          <div id="ca-scanout" style="margin-top:12px"></div>
+        </div>
+        <!-- agent-based scan -->
+        <div id="ca-agentmethod" style="display:none">
+          <p class="note">Run a one-time agent on a machine <b>inside</b> the network you want to scan. It discovers assets locally and submits the results back here. Pure-Python, no install; you run it yourself. Only scan networks you're authorized to test.</p>
+          <div class="form">
+            <div class="field"><label>Target (blank = the agent's local /24)</label><input id="ca-agent-target" placeholder="auto (local network) or e.g. 192.168.1.0/24"></div>
+            <button class="btn primary" id="ca-agent-create">Create agent job</button>
+          </div>
+          <div id="ca-agent-out" style="margin-top:12px"></div>
+        </div>
       </div>
       <!-- template mode -->
       <div id="ca-templatebox" style="display:none">
@@ -638,11 +655,41 @@ async function advisorInit(){ if(advReady) return; advReady=true;
     $('ca-provider').innerHTML = caProviders.map(x=>`<option value="${x.id}">${esc(x.label)}${x.implemented?'':' — planned'}</option>`).join('');
   }catch(e){}
   document.querySelectorAll('input[name=camode]').forEach(r=>r.onchange=()=>caSetMode(r.value));
+  document.querySelectorAll('input[name=camethod]').forEach(r=>r.onchange=()=>caSetMethod(r.value));
   $('ca-provider').onchange=caProviderChange;
   $('ca-detect').onclick=caDetect; $('ca-scan').onclick=caScanRun;
+  $('ca-agent-create').onclick=caCreateAgentJob;
   $('ca-tmpl-start').onclick=()=>caStartInterview();
   $('ca-next').onclick=caContinue; $('ca-generate').onclick=caGenerate;
-  caSetMode('scan'); caProviderChange();
+  caSetMode('scan'); caProviderChange(); caSetMethod('server');
+}
+function caSetMethod(m){ $('ca-servermethod').style.display=m==='server'?'block':'none'; $('ca-agentmethod').style.display=m==='agent'?'block':'none'; }
+async function caCreateAgentJob(){
+  const target=$('ca-agent-target').value.trim()||'auto';
+  $('ca-agent-out').innerHTML='<span class="spin"></span> creating job…';
+  try{
+    const j=await (await fetch('/agent/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,label:'advisor'})})).json();
+    const c=j.commands;
+    $('ca-agent-out').innerHTML=`<div class="rescard"><h3>Run this on a host inside the target network</h3>
+      <div class="note" style="margin-bottom:4px">Windows PowerShell (click to select, then copy):</div>
+      <textarea class="qta" rows="2" readonly onclick="this.select()">${esc(c.powershell)}</textarea>
+      <div class="note" style="margin:8px 0 4px">macOS / Linux:</div>
+      <textarea class="qta" rows="2" readonly onclick="this.select()">${esc(c.bash)}</textarea>
+      <div id="ca-agent-status" class="note" style="margin-top:10px"><span class="spin"></span> waiting for the agent to submit results…</div></div>`;
+    caPollAgent(j.job_id, 0);
+  }catch(e){ $('ca-agent-out').innerHTML='<span style="color:var(--crit)">could not create agent job</span>'; }
+}
+async function caPollAgent(jobId, tries){
+  if(tries>200){ const s=$('ca-agent-status'); if(s) s.innerHTML='timed out waiting for the agent.'; return; }
+  try{ const s=await (await fetch('/agent/jobs/'+jobId)).json();
+    if(s.status==='complete'){
+      caScan={scan_report:s.scan_report, recommendations:s.recommendations};
+      caCats=[]; (s.recommendations.hosts||[]).forEach(h=>(h.categories||[]).forEach(c=>{ if(!caCats.includes(c)) caCats.push(c); }));
+      const el=$('ca-agent-status'); if(el) el.innerHTML=`✓ results received — ${s.hosts_found} host(s), categories: ${caCats.map(esc).join(', ')||'none'}.<br><button class="btn primary" style="margin-top:8px" onclick="caStartInterview()">Start interview →</button>`;
+      return;
+    }
+  }catch(e){}
+  setTimeout(()=>caPollAgent(jobId, tries+1), 3000);
 }
 function caSetMode(m){ caMode=m;
   $('ca-scanbox').style.display = m==='scan'?'block':'none';
