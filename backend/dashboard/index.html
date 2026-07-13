@@ -140,6 +140,15 @@
   .qcard .q{font-weight:600;margin-bottom:8px}
   .qopt{display:flex;gap:8px;align-items:flex-start;padding:5px 0;font-size:13px;cursor:pointer}
   .qopt .d{color:var(--muted);font-size:12px}
+  .chat{max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel);display:flex;flex-direction:column;gap:8px}
+  .bubble{max-width:82%;padding:8px 12px;border-radius:13px;font-size:13px;line-height:1.5;white-space:pre-wrap}
+  .bubble.a{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:3px}
+  .bubble.u{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:3px}
+  .chatinput{display:flex;gap:8px;margin-top:10px}
+  .chatinput input{flex:1;background:var(--pill);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 11px;font-size:13px}
+  .chatinput input:focus{outline:none;border-color:var(--accent)}
+  .factchip{display:inline-block;background:var(--pill);border:1px solid var(--line);border-radius:20px;padding:2px 9px;font-size:11px;margin:2px;color:var(--muted)}
+  .factchip b{color:var(--txt)}
   .qta{width:100%;background:var(--pill);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:8px 9px;font-size:13px;resize:vertical;font-family:inherit}
   .qta:focus{outline:none;border-color:var(--accent)}
   .understood{font-size:12px;color:var(--ok);margin-top:5px;min-height:1px}
@@ -298,9 +307,14 @@
     </div>
 
     <div id="ca-step2" style="display:none">
-      <div id="ca-questions"></div>
-      <button class="btn primary" id="ca-next">Continue</button>
-      <button class="btn" onclick="caGoStep(1)">Back</button>
+      <p class="note" style="margin:0 0 8px">A quick conversation about your organization — answer in your own words; the assistant will ask one question at a time.</p>
+      <div id="ca-chat" class="chat"></div>
+      <div class="chatinput">
+        <input id="ca-msg" placeholder="Type your answer…" autocomplete="off" disabled>
+        <button class="btn primary" id="ca-send" disabled>Send</button>
+      </div>
+      <div id="ca-facts" style="margin-top:8px"></div>
+      <button class="btn" onclick="caGoStep(1)" style="margin-top:8px">Back</button>
     </div>
 
     <div id="ca-step3" style="display:none">
@@ -661,7 +675,9 @@ async function advisorInit(){ if(advReady) return; advReady=true;
   $('ca-detect').onclick=caDetect; $('ca-scan').onclick=caScanRun;
   $('ca-agent-create').onclick=caCreateAgentJob;
   $('ca-tmpl-start').onclick=()=>caStartInterview();
-  $('ca-next').onclick=caContinue; $('ca-generate').onclick=caGenerate;
+  $('ca-send').onclick=caSend;
+  $('ca-msg').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); caSend(); }});
+  $('ca-generate').onclick=caGenerate;
   caSetMode('scan'); caProviderChange(); caSetMethod('server');
 }
 function caSetMethod(m){ $('ca-servermethod').style.display=m==='server'?'block':'none'; $('ca-agentmethod').style.display=m==='agent'?'block':'none'; }
@@ -733,17 +749,46 @@ async function caScanRun(){
       `</div><button class="btn primary" onclick="caStartInterview()">Start interview →</button>`;
   }catch(e){ $('ca-scanout').innerHTML='<span style="color:var(--crit)">request failed</span>'; }
 }
+let caSid=null, caFacts={};
+function caBubble(role, text){
+  const b=document.createElement('div'); b.className='bubble '+(role==='user'?'u':'a'); b.textContent=text;
+  $('ca-chat').appendChild(b); $('ca-chat').scrollTop=$('ca-chat').scrollHeight; return b;
+}
+function caRenderFacts(){
+  const keys=Object.keys(caFacts); if(!keys.length){ $('ca-facts').innerHTML=''; return; }
+  $('ca-facts').innerHTML='<span class="note">captured:</span> '+keys.map(k=>`<span class="factchip">${esc(k)}: <b>${esc(caFacts[k])}</b></span>`).join('');
+}
 async function caStartInterview(){
-  caAnswers={}; caFollowLoaded=false;
+  caAnswers={}; caFacts={}; caSid=null;
   caGoStep(2);
-  $('ca-questions').innerHTML='<span class="spin"></span> loading questions…';
-  const expanded = caMode==='template';
-  try{ const d=await (await fetch('/advisor/questions?expanded='+expanded)).json();
-    let html=`<div class="qcard"><div class="q">${esc(d.business_name.question)}</div>
-      <input style="width:100%;background:var(--pill);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:7px 9px" data-qid="business_name" type="text"></div>`;
-    html += d.questions.map(renderQuestion).join('');
-    $('ca-questions').innerHTML=html;
-  }catch(e){ $('ca-questions').innerHTML='could not load questions'; }
+  $('ca-chat').innerHTML=''; $('ca-facts').innerHTML='';
+  $('ca-msg').disabled=true; $('ca-send').disabled=true;
+  const typing=caBubble('assistant','…');
+  try{
+    const d=await (await fetch('/advisor/interview/start',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({categories:caCats})})).json();
+    caSid=d.session_id; typing.textContent=d.message;
+    if(!d.llm) caBubble('assistant','(note: the local language model is not loaded on the server — questions will be more basic.)');
+    $('ca-msg').disabled=false; $('ca-send').disabled=false; $('ca-msg').focus();
+  }catch(e){ typing.textContent='could not start the interview.'; }
+}
+async function caSend(){
+  const inp=$('ca-msg'); const text=inp.value.trim(); if(!text || !caSid) return;
+  caBubble('user', text); inp.value=''; inp.disabled=true; $('ca-send').disabled=true;
+  const typing=caBubble('assistant','…');
+  try{
+    const d=await (await fetch('/advisor/interview/reply',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session_id:caSid, text})})).json();
+    typing.textContent=d.message||'…';
+    if(d.captured){ Object.assign(caFacts, d.captured); caRenderFacts(); }
+    if(d.done){
+      caAnswers=d.context||caAnswers;
+      inp.disabled=true; $('ca-send').disabled=true;
+      const go=document.createElement('button'); go.className='btn primary'; go.style.marginTop='10px';
+      go.textContent='Generate report →'; go.onclick=()=>caGoStep(3);
+      $('ca-facts').appendChild(document.createElement('br')); $('ca-facts').appendChild(go);
+    } else { inp.disabled=false; $('ca-send').disabled=false; inp.focus(); }
+  }catch(e){ typing.textContent='sorry — something went wrong; please try again.'; inp.disabled=false; $('ca-send').disabled=false; }
 }
 function renderQuestion(q){
   const examples=q.options.map(o=>`<b>${esc(o.value)}</b> — ${esc(o.description)}`).join('<br>');

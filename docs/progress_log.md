@@ -4,6 +4,29 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-12 — LLM-driven conversational interview (Qwen) — replaces the form
+
+The interview regressed to a static free-text form interpreted only by the embedder; the intended
+design is a Qwen-driven CONVERSATION. Rebuilt as a stateful chat (guided + embedder-extraction, the
+user's chosen options): Qwen asks ONE contextual question at a time and clarifies when unsure, the
+RegMap embedder extracts each answer to a structured field, and a checklist guarantees full
+coverage for the compliance mapping. Degrades to canonical question text if the LLM is absent.
+- advisor_api: `POST /advisor/interview/start` + `/reply` (stateful sessions `_INTERVIEWS`),
+  `GET /advisor/interview/{sid}`. Qwen via control-advisor `llm_interview._generate` (SHARED with
+  draft_language → one model instance); `_question_for`/`_clarify_for` with canonical fallback;
+  `_next_field` = BASE_ORDER (sector, regulated_data, internet_facing, maturity, deployment_model,
+  cloud_providers, has_ot_ics, remote_workforce, endpoints_managed) then adaptive FOLLOWUP triggers;
+  embedder extraction via semantic_answer; clarify at most once per field; background model warmup
+  on session start.
+- Dashboard: chat UI (assistant/user bubbles, one question at a time, "thinking" indicator,
+  captured-facts chips, Enter to send) replacing the all-questions form; on completion → context
+  feeds the report step.
+- Deploy decision (user): **mount** the local Qwen model read-only into the container (no image
+  bloat) — recreate RedMap with `-v <repo>/models/qwen2.5-1.5b-instruct:/app/models/qwen2.5-1.5b-instruct:ro`.
+  Runs on CPU (~7-12s/turn on the 1.5B model; first turn slower due to load; warmup mitigates).
+- Tests: +2 (interview flow to completion; clarify-once-then-advance), model/embedder stubbed +
+  warmup stubbed so CI stays fast. 66 pass (only the pre-existing incomplete auth_service test fails).
+
 ## 2026-07-12 — Scan target fixes (whitespace + oversized range)
 
 Two bugs the user hit in the Advisor scan (screenshots):

@@ -40,17 +40,31 @@ def seems_confused(raw):
     return any(signal in v for signal in CONFUSION_SIGNALS)
 
 
+import threading as _threading
+
 _model = None
 _tokenizer = None
+_load_lock = _threading.Lock()
 
 
 def _load():
     global _model, _tokenizer
     if _model is not None:
         return
-    _tokenizer = AutoTokenizer.from_pretrained(str(MODEL_PATH))
-    _model = AutoModelForCausalLM.from_pretrained(str(MODEL_PATH), dtype=torch.float32)
-    _model.eval()
+    # Serialize loading so concurrent callers (e.g. a warmup thread + a request) don't each load a
+    # copy and blow past memory. Load in bfloat16 with low_cpu_mem_usage to roughly halve resident
+    # RAM (~3GB vs ~6GB for a 1.5B model) so it fits an 8GB Docker/WSL2 VM; fall back to float32.
+    with _load_lock:
+        if _model is not None:
+            return
+        _tokenizer = AutoTokenizer.from_pretrained(str(MODEL_PATH))
+        try:
+            _model = AutoModelForCausalLM.from_pretrained(
+                str(MODEL_PATH), dtype=torch.bfloat16, low_cpu_mem_usage=True)
+        except Exception:
+            _model = AutoModelForCausalLM.from_pretrained(
+                str(MODEL_PATH), dtype=torch.float32, low_cpu_mem_usage=True)
+        _model.eval()
 
 
 def _build_system_prompt(question, multi):
