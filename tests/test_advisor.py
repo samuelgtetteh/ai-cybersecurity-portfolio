@@ -63,6 +63,18 @@ def test_expanded_questions(client):
     assert "deployment_model" not in base
 
 
+def test_interpret_freetext_answers(client):
+    # plain-English answers resolve to structured option values via the embedder (no LLM)
+    r = client.post("/advisor/interpret", json={"responses": {
+        "business_name": "Acme Medical Clinic",
+        "sector": "we are a small medical clinic that keeps patient charts",
+        "regulated_data": "we store patient health records and take credit card payments"}})
+    res = r.json()["results"]
+    assert res["business_name"]["value"] == "Acme Medical Clinic" and res["business_name"]["method"] == "text"
+    assert res["sector"]["value"] == "healthcare"
+    assert isinstance(res["regulated_data"]["value"], list) and "phi_hipaa" in res["regulated_data"]["value"]
+
+
 def test_unimplemented_provider_501(client):
     assert client.post("/advisor/scan", json={"provider": "azure"}).status_code == 501
 

@@ -47,6 +47,7 @@ try:
     import report_export
     import docx_report
     import xlsx_report
+    import semantic_answer as ca_semantic  # embedder-based free-text interpretation
     try:
         import draft_language  # optional LLM step
     except Exception:
@@ -124,13 +125,25 @@ EXTRA_QUESTIONS = [
                       "gcp": "Google Cloud", "other": "Another provider", "none": "None"}},
     {"id": "has_ot_ics", "question": "Do you operate industrial / OT systems (SCADA, PLCs, building "
                                      "management, medical devices)?",
-     "descriptions": {"yes": "Yes", "no": "No", "unsure": "Not sure"}},
+     "descriptions": {
+         "yes": "Yes — we operate industrial or operational-technology systems such as SCADA, PLCs, "
+                "building-management / HVAC controls, manufacturing equipment, or medical devices",
+         "no": "No — we have no industrial, OT, or building-control systems; only regular IT",
+         "unsure": "Not sure whether we have any OT/ICS systems"}},
     {"id": "remote_workforce", "question": "Do staff access systems remotely (VPN, remote desktop, "
                                            "or SaaS from anywhere)?",
-     "descriptions": {"yes": "Yes", "no": "No"}},
+     "descriptions": {
+         "yes": "Yes — staff work remotely or access systems from outside the office via VPN, "
+                "remote desktop, or cloud/SaaS apps",
+         "no": "No — systems are only accessed on-site from the office network"}},
     {"id": "endpoints_managed", "question": "Are workstations and servers centrally managed "
                                             "(patching, configuration, antivirus)?",
-     "descriptions": {"yes": "Yes", "partial": "Partially", "no": "No", "unsure": "Not sure"}},
+     "descriptions": {
+         "yes": "Yes — devices are centrally managed with automatic patching, standard "
+                "configuration, and antivirus/EDR",
+         "partial": "Partially — some devices are managed but others are not",
+         "no": "No — devices are not centrally managed; users patch and configure their own",
+         "unsure": "Not sure how devices are managed"}},
 ]
 
 
@@ -266,6 +279,50 @@ def followup_questions(req: FollowupReq):
         if fires and q["id"] not in req.answers:
             out.append(_question_payload(q))
     return {"questions": out}
+
+
+def _question_index(expanded: bool = True) -> dict:
+    """id -> question dict, across base + (expanded) + follow-up questions, for interpretation."""
+    qs = list(ca_interview.ENVIRONMENT_QUESTIONS)
+    if expanded:
+        qs += EXTRA_QUESTIONS
+    qs += list(getattr(ca_interview, "FOLLOWUP_QUESTIONS", []))
+    return {q["id"]: q for q in qs}
+
+
+class InterpretReq(BaseModel):
+    responses: dict = Field(default_factory=dict, description="{question_id: free-text answer}")
+
+
+@router.post("/interpret")
+def interpret_answers(req: InterpretReq):
+    """Turn plain-English answers into structured option values using the RegMap embedder
+    (semantic_answer) — so the interview is conversational, not tick-boxes. Returns, per question,
+    the resolved value(s), a human label, and the match confidence for transparency. Needs no LLM;
+    'business_name' passes through as free text."""
+    _require_available()
+    idx = _question_index(expanded=True)
+    results = {}
+    for qid, text in (req.responses or {}).items():
+        text = (text or "").strip()
+        if qid == "business_name":
+            results[qid] = {"value": text, "label": text, "method": "text"}
+            continue
+        q = idx.get(qid)
+        if not q:
+            results[qid] = {"value": text, "label": text, "method": "unknown"}
+            continue
+        descs = q.get("descriptions", {})
+        multi = bool(q.get("multi"))
+        try:
+            selected, details = ca_semantic.interpret(text, descs, multi=multi)
+        except Exception as e:
+            selected = ["unsure"] if multi else "unsure"
+            details = {"method": "error", "error": str(e)}
+        vals = selected if isinstance(selected, list) else [selected]
+        results[qid] = {"value": selected, "label": ", ".join(str(v) for v in vals),
+                        "method": details.get("method"), "score": details.get("score")}
+    return {"results": results}
 
 
 # ------------------------------------------------------------------ report generation
