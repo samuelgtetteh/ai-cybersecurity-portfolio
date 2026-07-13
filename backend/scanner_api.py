@@ -57,9 +57,10 @@ def run_scan(req: ScanRequest):
         ports = _parse_ports(req.ports)
     except ValueError:
         raise HTTPException(status_code=400, detail="invalid ports spec (use '22,80' or '1-1024')")
+    target = "".join((req.target or "").split())  # tolerate stray whitespace in the target
     try:
         report = discovery.scan_and_report(
-            req.target, ports=ports, engine=req.engine, with_cves=req.with_cves,
+            target, ports=ports, engine=req.engine, with_cves=req.with_cves,
             max_per_service=req.max_per_service, timeout=req.timeout, delay=req.delay)
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))

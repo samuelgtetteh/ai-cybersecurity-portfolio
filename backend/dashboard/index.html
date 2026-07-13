@@ -271,6 +271,7 @@
           <div class="form">
             <div class="field"><label>Network type</label><select id="ca-provider"></select></div>
             <div class="field" id="ca-target-field"><label>Target (host / CIDR / WAN IP)</label><input id="ca-target" placeholder="e.g. 10.0.0.0/24, a host, or a public IP"></div>
+            <div class="field" id="ca-maxhosts-field"><label>Max hosts</label><input id="ca-maxhosts" type="number" min="1" max="4096" value="256" style="min-width:90px"></div>
             <div class="field" id="ca-region-field" style="display:none"><label>AWS region</label><input id="ca-region" value="us-east-1"></div>
           </div>
           <div id="ca-provider-note" class="note" style="margin:6px 0"></div>
@@ -699,6 +700,7 @@ function caSetMode(m){ caMode=m;
 function caProviderChange(){
   const id=$('ca-provider').value; const p=caProviders.find(x=>x.id===id)||{implemented:true};
   $('ca-target-field').style.display = id==='physical'?'flex':'none';
+  $('ca-maxhosts-field').style.display = id==='physical'?'flex':'none';
   $('ca-region-field').style.display = id==='aws'?'flex':'none';
   $('ca-provider-note').textContent = p.note||'';
   $('ca-scan').disabled = !p.implemented; $('ca-scan').style.opacity = p.implemented?'1':'.5';
@@ -713,13 +715,14 @@ async function caDetect(){
   }catch(e){ $('ca-env').textContent='environment detection unavailable'; }
 }
 async function caScanRun(){
-  const provider=$('ca-provider').value; const target=$('ca-target').value.trim();
+  const provider=$('ca-provider').value; const target=$('ca-target').value.replace(/\s+/g,'');
   if(!$('ca-ack').checked){ alert('Please confirm you are authorized to scan this target.'); return; }
   if(provider==='physical' && !target){ alert('Enter a target CIDR or host — or click “Discover environment”.'); return; }
+  const maxHosts=parseInt($('ca-maxhosts').value,10)||256;
   $('ca-scanout').innerHTML='<span class="spin"></span> scanning &amp; mapping controls…';
   try{
     const r=await fetch('/advisor/scan',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({provider, target, region:($('ca-region').value||'us-east-1')})});
+      body:JSON.stringify({provider, target, max_hosts:maxHosts, region:($('ca-region').value||'us-east-1')})});
     const d=await r.json();
     if(!r.ok){ $('ca-scanout').innerHTML='<span style="color:var(--crit)">'+esc(d.detail||'scan failed')+'</span>'; return; }
     caScan=d; caCats=[]; (d.recommendations.hosts||[]).forEach(h=>(h.categories||[]).forEach(c=>{ if(!caCats.includes(c)) caCats.push(c); }));
