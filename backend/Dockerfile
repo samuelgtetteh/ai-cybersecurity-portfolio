@@ -26,6 +26,8 @@ COPY backend/llm_client.py backend/llm_client.py
 COPY backend/scanner_api.py backend/scanner_api.py
 COPY backend/securescan backend/securescan
 COPY backend/advisor_api.py backend/advisor_api.py
+COPY backend/agent_api.py backend/agent_api.py
+COPY backend/agent backend/agent
 # Compliance Advisor toolkit (imported by advisor_api; resolves data/models via ../.. = /app)
 COPY control-advisor/scanner control-advisor/scanner
 COPY backend/dashboard backend/dashboard
