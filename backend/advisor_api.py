@@ -63,8 +63,12 @@ except Exception as e:  # toolkit not present (e.g. not copied into the image)
 
 try:
     from securescan import authz as scan_authz
+    from securescan import analyze as sanalyze
+    from securescan import discovery as sdiscovery
 except Exception:
     scan_authz = None
+    sanalyze = None
+    sdiscovery = None
 
 router = APIRouter(prefix="/advisor", tags=["advisor"])
 
@@ -234,8 +238,9 @@ def advisor_scan(req: AdvisorScan):
             raise HTTPException(status_code=400, detail="a target CIDR or host is required for a network scan")
         target = _normalize_target(req.target)
         _authorize(target)
-        try:
-            scan_report = network_scan.scan(target, timeout=req.timeout, max_hosts=req.max_hosts)
+        try:  # SecureScan's engine is now the single discovery source
+            scan_report = sdiscovery.scan_network(target, engine="auto",
+                                                   timeout=req.timeout, max_hosts=req.max_hosts)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
@@ -251,11 +256,32 @@ def advisor_scan(req: AdvisorScan):
             "Physical network and AWS are available today."))
     else:
         raise HTTPException(status_code=400, detail=f"unknown provider '{provider}'")
+    return _analyze(scan_report)
+
+
+def _analyze(scan_report: dict) -> dict:
+    """Run the shared analyzer over a scan report -> unified {scan_report, hosts(ports+CVEs+KEV/EPSS),
+    categories, recommendations(NIST controls), cve_total, kev_count, host_max_risk}."""
+    if sanalyze is None:
+        raise HTTPException(status_code=503, detail="analyzer unavailable")
     try:
-        recommendations = control_mapper.recommend_for_scan(scan_report, top_k=req.top_k)
+        analysis = sanalyze.analyze(scan_report)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"control mapping failed: {e}")
-    return {"scan_report": scan_report, "recommendations": recommendations}
+        raise HTTPException(status_code=500, detail=f"analysis failed: {e}")
+    return {"scan_report": scan_report, **analysis}
+
+
+class IngestReq(BaseModel):
+    scan_report: dict = Field(..., description="a SecureScan / agent scan report to analyze")
+
+
+@router.post("/ingest")
+def advisor_ingest(body: IngestReq):
+    """Ingest a scan report produced elsewhere (a SecureScan run, or the on-prem agent) and return
+    the unified analysis for the user to VERIFY before generating the compliance package. This is
+    how SecureScan's output feeds compliance mapping."""
+    _require_available()
+    return _analyze(body.scan_report)
 
 
 # ------------------------------------------------------------------ interview (adaptive form)

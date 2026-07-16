@@ -8,6 +8,8 @@ Ties the pieces together:
   4. the result is a structured report, optionally recorded to the verdict store as model="scan"
      so it flows through the same Record -> Decide -> Act -> dashboard platform as the detectors.
 """
+import concurrent.futures
+import ipaddress
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -25,6 +27,51 @@ def scan_host(target: str, ports: Optional[List[int]] = None, engine: str = "aut
     ip = authz.assert_authorized(target)
     eng = engines.get_engine(engine)
     return eng.scan(target, ip=ip, ports=ports, timeout=timeout, delay=delay, banner=banner)
+
+
+def scan_network(target: str, engine: str = "auto", ports: Optional[List[int]] = None,
+                 timeout: float = 0.6, max_hosts: int = 256) -> dict:
+    """Discovery for a single host OR a CIDR range — the one engine that feeds both the
+    vulnerability view and compliance mapping. Returns a raw scan_report (no CVEs yet;
+    analyze.analyze() adds CVEs + KEV/EPSS + control mapping). Caller must authorize `target`.
+
+    Single host -> uses the requested engine (nmap gives versions for good CVE lookups).
+    Range       -> threaded socket connect-scan across hosts (dependency-free, low-noise)."""
+    single = target
+    try:
+        net = ipaddress.ip_network(target, strict=False)
+        is_range = net.num_addresses > 1
+        if not is_range:
+            single = str(net.network_address)   # a bare IP or /32 -> the host itself
+    except ValueError:
+        is_range = False                          # a hostname
+
+    if not is_range:
+        hs = scan_host(single, ports=ports, engine=engine, timeout=timeout)
+        svcs = [{"port": p.port, "service": p.service, "product": p.product,
+                 "version": p.version, "cpe": p.cpe} for p in hs.ports]
+        return {"cidr": None, "ip": hs.ip, "engine": hs.engine, "up": hs.up,
+                "ports": [p.dict() for p in hs.ports],
+                "hosts_scanned": 1, "hosts_found": 1 if hs.up else 0,
+                "results": [{"ip": hs.ip, "open_ports": [p.port for p in hs.ports], "services": svcs}]}
+
+    sock = engines.get_engine("socket")   # range discovery uses the dependency-free connect scan
+    all_hosts = [str(h) for h in net.hosts()][:max_hosts]
+    results = []
+
+    def _one(ip):
+        hs = sock.scan(ip, ip=ip, ports=ports, timeout=timeout, banner=False)
+        if hs.up and hs.ports:
+            return {"ip": ip, "open_ports": [p.port for p in hs.ports],
+                    "services": [{"port": p.port, "service": p.service} for p in hs.ports]}
+        return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=64) as ex:
+        for r in ex.map(_one, all_hosts):
+            if r:
+                results.append(r)
+    return {"cidr": str(net), "engine": "socket", "hosts_scanned": len(all_hosts),
+            "hosts_found": len(results), "results": results}
 
 
 def enrich_with_cves(hostscan, max_per_service: int = 5, use_cache: bool = True) -> dict:
