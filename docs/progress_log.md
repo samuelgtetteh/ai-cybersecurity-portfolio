@@ -4,6 +4,28 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-16 — SecureScan Phase 2: engine catalog + KEV/EPSS enrichment + import (Nessus/OpenVAS/nuclei)
+
+Phase 2, reframed (per the Nessus/OpenVAS comparison) as ORCHESTRATE + INGEST + our compliance/
+prioritization layer — not a Nessus clone.
+- `securescan/catalog.py`: single source of truth for all engines (discovery: socket/nmap/masscan/
+  naabu/rustscan; vuln: nuclei/grype; cloud: prowler/scoutsuite; passive: zeek/p0f; import:
+  nessus/openvas/nuclei; enrichment: nvd/cisa_kev/epss/osv) with per-engine AVAILABILITY detection
+  (shutil.which / lib check) + how-to-enable. Nothing faked as available.
+- `securescan/enrich.py`: CISA KEV (known-exploited) + FIRST EPSS (exploit probability), cached,
+  best-effort; `risk_score()` blends CVSS + KEV floor + EPSS → a poor-man's VPR. Wired into
+  `POST /scan` CVE results (each CVE gets in_kev/epss/risk; host_max_risk + kev_count).
+- `securescan/importers.py`: parse Nessus .nessus XML / OpenVAS-GVM XML / nuclei JSON(L) →
+  normalized findings {host,name,severity,cvss,cve_ids}; stdlib only, defensive.
+- scanner_api: `GET /scan/catalog`, `POST /scan/import` (parse + enrich + rank by risk).
+- UI (SecureScan): engine-catalog panel (status badges + enable hints), "Import a scan report"
+  upload (KEV/risk table), and KEV + EPSS badges on live scan CVEs.
+- Honest framing: SecureScan orchestrates best-of-breed engines and ingests Nessus/OpenVAS output;
+  our original contribution is CVE->NIST 800-53 mapping + KEV/EPSS prioritization + the advisor.
+- Tests: +4 (catalog, importers on samples, enrichment mocked, import endpoint). 70 pass.
+- CLI engines (masscan/naabu/nuclei/grype/prowler/…) are DETECTED + documented but execution
+  wiring is not shipped (can't verify without the binaries) — availability shows in the catalog.
+
 ## 2026-07-12 — LLM-driven conversational interview (Qwen) — replaces the form
 
 The interview regressed to a static free-text form interpreted only by the embedder; the intended

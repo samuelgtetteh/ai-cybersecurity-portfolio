@@ -16,7 +16,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from securescan import authz, discovery, engines
+from securescan import authz, catalog, discovery, engines, enrich, importers
 
 router = APIRouter(prefix="/scan", tags=["securescan"])
 
@@ -66,9 +66,67 @@ def run_scan(req: ScanRequest):
         raise HTTPException(status_code=403, detail=str(e))
     except engines.EngineUnavailable as e:
         raise HTTPException(status_code=400, detail=str(e))
+    if req.with_cves:
+        _enrich_report(report)
     if req.record:
         report["verdict_id"] = discovery.record_report(report)
     return report
+
+
+def _enrich_report(report: dict) -> None:
+    """Attach CISA KEV + EPSS + a blended risk score to every CVE in a scan report (in place)."""
+    ids = [c["cve_id"] for p in report.get("ports", []) for c in (p.get("cves") or []) if c.get("cve_id")]
+    if not ids:
+        return
+    enr = enrich.enrich_cves(ids)
+    host_max_risk = 0.0
+    for p in report.get("ports", []):
+        for c in (p.get("cves") or []):
+            e = enr.get((c.get("cve_id") or "").upper(), {})
+            c["in_kev"] = e.get("in_kev", False)
+            c["epss"] = e.get("epss")
+            c["risk"] = enrich.risk_score(c.get("cvss_score"), c["in_kev"], c["epss"])
+            host_max_risk = max(host_max_risk, c["risk"])
+    report["host_max_risk"] = host_max_risk
+    report["kev_count"] = sum(1 for p in report.get("ports", []) for c in (p.get("cves") or []) if c.get("in_kev"))
+
+
+@router.get("/catalog")
+def scan_catalog():
+    """The full scan-engine catalog (all recommended engines) with per-engine availability and
+    how-to-enable — so the UI can list every option honestly. See also GET /scan/engines for the
+    engines currently executable for a direct scan."""
+    return {"catalog": catalog.describe(), "summary": catalog.summary()}
+
+
+class ImportReq(BaseModel):
+    filename: str = Field("", description="original filename (helps detect the format)")
+    content: str = Field(..., description="the report file's text content")
+
+
+@router.post("/import")
+def import_report(req: ImportReq):
+    """Ingest another scanner's report (Nessus .nessus / OpenVAS XML / nuclei JSON), normalize the
+    findings, and enrich the CVEs with KEV + EPSS + a blended risk score. This is the bridge to
+    proven scanners: they find the vulns, we prioritize and (via the advisor) map to controls."""
+    try:
+        parsed = importers.detect_and_parse(req.filename, req.content or "")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    findings = parsed["findings"]
+    all_ids = sorted({c for f in findings for c in f.get("cve_ids", [])})
+    enr = enrich.enrich_cves(all_ids) if all_ids else {}
+    kev_total = 0
+    for f in findings:
+        kevs = [c for c in f.get("cve_ids", []) if enr.get(c.upper(), {}).get("in_kev")]
+        epss_vals = [enr.get(c.upper(), {}).get("epss") or 0.0 for c in f.get("cve_ids", [])]
+        f["in_kev"] = bool(kevs)
+        f["epss"] = max(epss_vals) if epss_vals else None
+        f["risk"] = enrich.risk_score(f.get("cvss"), f["in_kev"], f["epss"])
+        kev_total += len(kevs)
+    findings.sort(key=lambda f: f.get("risk", 0), reverse=True)
+    return {"format": parsed["format"], "count": len(findings), "cve_count": len(all_ids),
+            "kev_count": kev_total, "findings": findings}
 
 
 @router.get("/engines")
