@@ -4,6 +4,25 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-16 — Unify scan tools: one "Assess" workflow + Help page (retire standalone SecureScan)
+
+Retired the duplication (two scanners, two tabs). SecureScan's engine now feeds compliance mapping;
+the standalone SecureScan tab is gone. Nav is now **Monitor · Assess · Help**.
+- Backend (commit 7932786): `securescan/analyze.py` (shared analyzer: any scan_report → per-host
+  ports→CVEs+KEV/EPSS + service/port→NIST category → control_mapper), `securescan/discovery.
+  scan_network` (one engine for single host OR CIDR range), `advisor_api` rewired to
+  securescan.scan_network + analyze (dropped control-advisor network_scan) + `POST /advisor/ingest`
+  (ingest a SecureScan/agent scan report and analyze it — the "ingest + verify" path).
+- UI: `view-scan` removed; `view-advisor` → **`view-assess`**, an industry-standard stepper
+  (1 Scan & findings → 2 Interview → 3 Report). Step 1 offers **Scan from server / Use an agent /
+  Import a report** + questionnaire-only mode. After a scan, `renderFindings()` shows the unified
+  findings (hosts, ports, CVEs with **KEV/EPSS** + mapped categories) to VERIFY, with
+  "Generate compliance package →" (or stop = scan-only). Engine catalog + import folded in.
+  Agent path now calls `/advisor/ingest` so it also gets CVEs/KEV, not just controls.
+- New **Help** page (`view-help`) with full site usage instructions; ☰ menu About → Help.
+- Tests: advisor tests updated for the rewire + `/advisor/ingest`; 71 pass (only the pre-existing
+  incomplete auth_service test fails).
+
 ## 2026-07-16 — SecureScan Phase 2: engine catalog + KEV/EPSS enrichment + import (Nessus/OpenVAS/nuclei)
 
 Phase 2, reframed (per the Nessus/OpenVAS comparison) as ORCHESTRATE + INGEST + our compliance/

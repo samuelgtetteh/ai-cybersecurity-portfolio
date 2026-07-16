@@ -183,8 +183,8 @@
     <button class="btn" id="menubtn" title="menu">☰ Menu</button>
     <div class="items">
       <a data-view="monitor">📊 Monitor</a>
-      <a data-view="scan">🔎 SecureScan</a>
-      <a data-view="advisor">📋 Compliance Advisor</a>
+      <a data-view="assess">🛡️ Assess (scan → compliance)</a>
+      <a data-view="help">❓ Help</a>
       <div class="sep"></div>
       <a onclick="openSettings()">⚙ Settings</a>
       <a onclick="exportTrail()">⬇ Export verdict trail (JSON)</a>
@@ -195,8 +195,8 @@
   </div>
   <nav class="nav" id="nav">
     <a data-view="monitor">Monitor</a>
-    <a data-view="scan">SecureScan</a>
-    <a data-view="advisor">Compliance Advisor</a>
+    <a data-view="assess">Assess</a>
+    <a data-view="help">Help</a>
   </nav>
   <div class="live"><span id="dot" class="dot"></span><span id="livetxt">connecting…</span></div>
   <div class="spacer"></div>
@@ -233,54 +233,22 @@
 </div>
 
 <!-- SecureScan tool -->
-<div id="view-scan" class="view">
+<!-- Assess: unified scan -> findings(verify) -> interview -> compliance report -->
+<div id="view-assess" class="view">
   <div class="page">
-    <h2>SecureScan — asset discovery &amp; CVE mapping</h2>
-    <p class="lead">Discover open ports/services on an authorized host and map each to known CVEs (NVD). <span id="sc-engines" class="note"></span></p>
-    <div class="warn-banner">⚠️ <b>Authorized use only.</b> Scan only hosts/subnets you own or are explicitly authorized to test.</div>
-    <div class="form">
-      <button class="btn" id="sc-detect" title="detect this host's network">🔍 Discover environment</button>
-      <div class="field"><label>Target (host / IP)</label><input id="sc-target" value="127.0.0.1"></div>
-      <div class="field"><label>Ports</label><input id="sc-ports" value="1-1024" placeholder="1-1024 or 22,80,443"></div>
-      <div class="field"><label>Engine</label><select id="sc-engine"><option value="auto">auto</option><option value="socket">socket</option><option value="nmap">nmap</option></select></div>
-      <div class="field"><label>CVE mapping</label><select id="sc-cves"><option value="true">map CVEs</option><option value="false">ports only (fast)</option></select></div>
-    </div>
-    <div id="sc-env" class="envbox" style="margin:10px 0;display:none"></div>
-    <div class="ackrow"><input type="checkbox" id="sc-ack"><label for="sc-ack">I am authorized to scan this target.</label>
-      <button class="btn primary" id="sc-run" style="margin-left:8px">Scan</button></div>
-    <div id="sc-status" class="note" style="margin-top:8px"></div>
-    <div id="sc-results" style="margin-top:14px"></div>
-
-    <div class="sec">Import a scan report (Nessus · OpenVAS · nuclei)</div>
-    <p class="note" style="margin:0 0 8px">Already ran Nessus, OpenVAS/Greenbone, or nuclei? Upload its report — we normalize the findings, flag known-exploited (CISA KEV) and exploit-probability (EPSS), and rank by blended risk.</p>
-    <div class="form">
-      <input type="file" id="sc-import-file" accept=".nessus,.xml,.json,.jsonl,.txt" style="font-size:12px">
-      <button class="btn" id="sc-import-btn">Import &amp; enrich</button>
-    </div>
-    <div id="sc-import-out" style="margin-top:10px"></div>
-
-    <div class="sec">Scan-engine catalog</div>
-    <p class="note" style="margin:0 0 8px">All supported engines. <b>ready</b> = usable now; <b>install</b> = add the dependency to enable. SecureScan orchestrates these and ingests external scanners rather than replacing them.</p>
-    <div id="sc-catalog" class="note">loading…</div>
-  </div>
-</div>
-
-<!-- Compliance Advisor tool (control-advisor pipeline) -->
-<div id="view-advisor" class="view">
-  <div class="page">
-    <h2>Compliance Advisor</h2>
-    <p class="lead">Assess your environment and generate NIST SP 800-53 control recommendations + downloadable DOCX/XLSX/JSON reports. <span id="ca-llm" class="note"></span></p>
+    <h2>Assess — scan → findings → compliance</h2>
+    <p class="lead">One workflow: discover assets (or import a scan / use an agent), review the findings — CVEs with KEV/EPSS risk — then optionally continue to a short interview and generate NIST SP 800-53 controls + downloadable reports. <span id="ca-llm" class="note"></span></p>
     <div class="warn-banner">⚠️ <b>Authorized use only.</b> Scan only networks and subnets you own or are explicitly authorized to test. Scanning third-party networks without permission may be illegal.</div>
 
     <div class="modes">
-      <label class="modecard"><span><input type="radio" name="camode" value="scan" checked> <b>Scan my environment</b></span>
-        <span class="d">Discover assets on a network you're authorized to scan, map them to controls, then answer a short interview.</span></label>
-      <label class="modecard"><span><input type="radio" name="camode" value="template"> <b>Generate a compliance template</b></span>
-        <span class="d">No scan — answer an expanded questionnaire and we determine your environment type and produce a tailored compliance document.</span></label>
+      <label class="modecard"><span><input type="radio" name="camode" value="scan" checked> <b>Scan / assess my environment</b></span>
+        <span class="d">Discover assets (server scan, an agent, or import a scan report), review the vulnerabilities, then optionally generate the compliance package.</span></label>
+      <label class="modecard"><span><input type="radio" name="camode" value="template"> <b>Questionnaire only (no scan)</b></span>
+        <span class="d">Skip scanning — answer an expanded questionnaire and we determine your environment type and produce a tailored compliance document.</span></label>
     </div>
 
     <div class="steps">
-      <div class="step on" id="cst-1">1 · <span id="cst-1-lbl">Environment &amp; scan</span></div>
+      <div class="step on" id="cst-1">1 · <span id="cst-1-lbl">Scan &amp; findings</span></div>
       <div class="step" id="cst-2">2 · Interview</div>
       <div class="step" id="cst-3">3 · Report</div>
     </div>
@@ -293,6 +261,7 @@
         <div class="ackrow" style="gap:18px;flex-wrap:wrap">
           <label><input type="radio" name="camethod" value="server" checked> Scan from server (a target / WAN I point to)</label>
           <label><input type="radio" name="camethod" value="agent"> Use an agent (scan a private network from inside it)</label>
+          <label><input type="radio" name="camethod" value="import"> Import a scan report (Nessus / OpenVAS / nuclei)</label>
         </div>
         <!-- server-side scan -->
         <div id="ca-servermethod">
@@ -317,12 +286,23 @@
           </div>
           <div id="ca-agent-out" style="margin-top:12px"></div>
         </div>
+        <!-- import an external scanner's report -->
+        <div id="ca-importmethod" style="display:none">
+          <p class="note">Already ran Nessus, OpenVAS/Greenbone, or nuclei? Upload its report — we normalize the findings, flag known-exploited (CISA KEV) and exploit-probability (EPSS), and rank by blended risk.</p>
+          <div class="form">
+            <input type="file" id="sc-import-file" accept=".nessus,.xml,.json,.jsonl,.txt" style="font-size:12px">
+            <button class="btn primary" id="sc-import-btn">Import &amp; enrich</button>
+          </div>
+          <div id="sc-import-out" style="margin-top:10px"></div>
+        </div>
       </div>
-      <!-- template mode -->
+      <!-- questionnaire-only mode -->
       <div id="ca-templatebox" style="display:none">
         <p class="note">You'll answer an expanded questionnaire (environment type, cloud, OT/ICS, exposure, maturity). No scanning is performed.</p>
         <button class="btn primary" id="ca-tmpl-start">Start questionnaire →</button>
       </div>
+      <details style="margin-top:14px"><summary class="note" style="cursor:pointer">Scan-engine catalog — what's available / how to enable</summary>
+        <div id="sc-catalog" class="note" style="margin-top:8px">loading…</div></details>
     </div>
 
     <div id="ca-step2" style="display:none">
@@ -342,6 +322,50 @@
       <button class="btn primary" id="ca-generate">Generate report</button>
       <button class="btn" onclick="caGoStep(2)">Back</button>
       <div id="ca-report" style="margin-top:14px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Help: how to use the platform -->
+<div id="view-help" class="view">
+  <div class="page">
+    <h2>Help — how to use RegMap</h2>
+    <p class="lead">RegMap is one platform with two areas: a live security <b>Monitor</b> and an <b>Assess</b> workflow (scan → findings → compliance). Everything runs from this browser.</p>
+
+    <div class="sec">The tabs</div>
+    <div class="rescard"><h3>📊 Monitor</h3>
+      <div class="note">Real-time decisioning across the detectors (identity, OT/ICS, compliance). Watch the live event feed, the alert queue, and response actions. Click an alert to open its case: see the evidence, resolve it as true/false positive (which trains the system), suppress a noisy subject, or take a response action.</div></div>
+    <div class="rescard"><h3>🛡️ Assess — scan → findings → compliance</h3>
+      <div class="note">A guided, four-part flow:
+        <br><b>1. Scan &amp; findings.</b> Choose how to discover assets:
+        <ul>
+          <li><b>Scan from server</b> — point at a host, CIDR, or a public/WAN IP you're authorized to test. (A public IP shows the internet-facing perimeter only — not devices inside a LAN.)</li>
+          <li><b>Use an agent</b> — to scan a <i>private</i> network (home/office) a cloud console can't reach: click <b>Create agent job</b>, run the one-line command it gives you on a machine <i>inside</i> that network, and results flow back here.</li>
+          <li><b>Import a report</b> — already ran Nessus, OpenVAS, or nuclei? Upload it; we enrich and rank the findings.</li>
+        </ul>
+        Tick <b>“I am authorized to scan this target”</b>, then scan. You'll get <b>findings</b>: open ports and CVEs, each flagged with <b>KEV</b> (actively exploited) and <b>EPSS</b> (exploit probability) and a blended risk score. <b>You can stop here (“scan only”).</b>
+        <br><b>2. Verify.</b> Review the findings — that's the picture the compliance mapping will use.
+        <br><b>3. Interview.</b> Click <b>“Generate compliance package”</b> to have a short, natural conversation about your organization (the assistant asks one question at a time).
+        <br><b>4. Report.</b> Get prioritized <b>NIST SP 800-53</b> control recommendations and download <b>DOCX / XLSX / JSON</b>. (Optionally include AI-written policy language.)
+        <br><br>Prefer no scan? Pick <b>“Questionnaire only”</b> to generate a compliance template from an expanded questionnaire.</div></div>
+
+    <div class="sec">Menu &amp; settings</div>
+    <div class="note" style="line-height:1.8">
+      <b>☰ Menu</b> — jump between tabs, <b>Export the verdict trail</b> (JSON), open <b>Settings</b>, the raw <b>API docs</b>, or About.<br>
+      <b>⚙ Settings</b> — personalize operational limits (log retention, detection thresholds, AI-triage toggle) live, without a restart.<br>
+      <b>☀ / 🌙</b> — light / dark theme.
+    </div>
+
+    <div class="sec">Authorization &amp; safety</div>
+    <div class="note" style="line-height:1.8">
+      Only scan networks you own or are explicitly authorized to test. Response actions that change posture (e.g. disable account) are recorded stubs — nothing is executed against live systems. The AI is advisory only; humans make the decisions.
+    </div>
+
+    <div class="sec">Tips</div>
+    <div class="note" style="line-height:1.8">
+      • Running in Docker, “Discover environment” shows the container's network; to scan your real LAN, enter your range (e.g. <code>10.0.0.0/24</code>) or use an agent.<br>
+      • First interview reply is slower (the language model loads once), then it's quick.<br>
+      • Large ranges: raise <b>Max hosts</b>, or scan a smaller CIDR.
     </div>
   </div>
 </div>
@@ -611,14 +635,13 @@ async function resetSettings(){
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeOverlays(); $('appmenu').classList.remove('open'); } });
 
 // ================= App menu + tool navigation (multi-view shell) =================
-const VIEWS = ['monitor','scan','advisor'];
+const VIEWS = ['monitor','assess','help'];
 function navigate(view){
   if(!VIEWS.includes(view)) view='monitor';
   VIEWS.forEach(v=>$('view-'+v).classList.toggle('active', v===view));
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('active', a.dataset.view===view));
   if(location.hash.slice(2)!==view) location.hash = '#/'+view;
-  if(view==='scan') scanInit();
-  if(view==='advisor') advisorInit();
+  if(view==='assess') advisorInit();
 }
 function routeFromHash(){ navigate((location.hash.match(/^#\/(\w+)/)||[])[1] || 'monitor'); }
 window.addEventListener('hashchange', routeFromHash);
@@ -627,8 +650,7 @@ document.querySelectorAll('[data-view]').forEach(a=>a.onclick=()=>{ navigate(a.d
 // dropdown menu open/close
 $('menubtn').onclick=(e)=>{ e.stopPropagation(); $('appmenu').classList.toggle('open'); };
 document.addEventListener('click', e=>{ if(!$('appmenu').contains(e.target)) $('appmenu').classList.remove('open'); });
-function about(){ $('appmenu').classList.remove('open');
-  alert('RegMap — AI Security Decisioning Platform\n\nMonitor: live Record→Decide→Act→triage console\nSecureScan: asset discovery + CVE mapping (NVD)\nCompliance Advisor: scan → interview → NIST 800-53 controls + reports\nSettings: personalize operational limits\n\nAll tools run from this browser interface.'); }
+function about(){ $('appmenu').classList.remove('open'); navigate('help'); }
 async function exportTrail(){ $('appmenu').classList.remove('open');
   try{ const d=await (await fetch('/decision/verdicts?limit=1000')).json();
     const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});
@@ -636,52 +658,30 @@ async function exportTrail(){ $('appmenu').classList.remove('open');
     a.download='verdict_trail.json'; a.click(); URL.revokeObjectURL(a.href);
   }catch(e){ alert('export failed'); } }
 
-// ================= SecureScan view =================
-let scanReady=false;
-async function scanInit(){ if(scanReady) return; scanReady=true;
-  try{ const d=await (await fetch('/scan/engines')).json();
-    $('sc-engines').textContent = `engines: ${d.engines.join(', ')} · default ${d.default}` + (d.authorization.allow_any?' · any-target enabled':' · private/LAN only');
-  }catch(e){}
-  $('sc-run').onclick = runScan;
-  $('sc-import-btn').onclick = importReport;
-  try{ const cat=await (await fetch('/scan/catalog')).json(); renderCatalog(cat); }catch(e){ $('sc-catalog').textContent='catalog unavailable'; }
-  $('sc-detect').onclick = async()=>{
-    $('sc-env').style.display='block'; $('sc-env').innerHTML='<span class="spin"></span> detecting…';
-    try{ const e=await (await fetch('/advisor/environment')).json();
-      const ifs=(e.local_interfaces||[]).map(i=>{const r=i.suggested_range||i.ip; return `<a style="cursor:pointer" onclick="$('sc-target').value='${r}'">${esc(i.ip)}${i.suggested_range?' → '+esc(i.suggested_range):''}</a>`;}).join(' · ');
-      $('sc-env').innerHTML=`<b>Interfaces</b> (click to use): ${ifs||'none'} · outbound IP: ${esc(e.outbound_ip||'—')}`;
-    }catch(e){ $('sc-env').textContent='environment detection unavailable'; }
-  };
-}
+// cvss pill (shared by the findings renderer)
 function cvssPill(s){ if(s==null) return '<span class="sevpill sev-low">n/a</span>';
   const sev = s>=9?'critical':s>=7?'high':s>=4?'medium':'low';
   return `<span class="sevpill sev-${sev}">${s} ${sev.toUpperCase()}</span>`; }
-async function runScan(){
-  const target=$('sc-target').value.trim(); const ports=$('sc-ports').value.trim();
-  const engine=$('sc-engine').value; const withCves=$('sc-cves').value==='true';
-  if(!$('sc-ack').checked){ alert('Please confirm you are authorized to scan this target.'); return; }
-  if(!target){ alert('Enter a target host/IP.'); return; }
-  $('sc-status').innerHTML='<span class="spin"></span> scanning '+esc(target)+'…'; $('sc-results').innerHTML='';
-  try{
-    const r=await fetch('/scan',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({target,ports:ports||null,engine,with_cves:withCves,record:true})});
-    const d=await r.json();
-    if(!r.ok){ $('sc-status').innerHTML='<span style="color:var(--crit)">'+esc(d.detail||'scan failed')+'</span>'; return; }
-    $('sc-status').textContent = `${d.ip} · ${d.up?'up':'no response'} · ${d.open_ports} open port(s) · engine ${d.engine}` + (d.cve_total?` · ${d.cve_total} CVE(s), max CVSS ${d.host_max_cvss}`:'');
-    if(!d.ports.length){ $('sc-results').innerHTML='<p class="note">No open ports found.</p>'; return; }
-    $('sc-results').innerHTML = d.ports.map(p=>{
-      const svc=[p.product,p.version].filter(Boolean).join(' ')||p.service||'—';
+
+// Render the unified analysis (findings = ports+CVEs+KEV/EPSS + mapped control categories) for
+// the user to VERIFY, with the CTA to continue to the compliance interview.
+function renderFindings(a, into){
+  const hosts=a.hosts||[]; const recs=(a.recommendations&&a.recommendations.hosts)||[];
+  let html=`<div class="note" style="margin-bottom:8px">Found <b>${hosts.length}</b> host(s) · <b>${a.cve_total||0}</b> CVE(s) · <b>${a.kev_count||0}</b> known-exploited (KEV) · categories: ${(a.categories||[]).map(esc).join(', ')||'—'}</div>`;
+  html += hosts.map(h=>{
+    const ports=(h.ports||[]).map(p=>{
       const cves=(p.cves||[]).map(c=>{
         const kev=c.in_kev?' <span class="kevchip">KEV</span>':'';
         const epss=(c.epss!=null)?` <span class="muted">EPSS ${(c.epss*100).toFixed(0)}%</span>`:'';
-        return `<div class="cve">${cvssPill(c.cvss_score)}
-        <a href="${c.url||'#'}" target="_blank">${esc(c.cve_id)}</a>${kev}${epss}
-        <span class="muted" style="grid-column:1/-1">${esc(c.description||'')}</span></div>`;}).join('');
-      return `<div class="rescard"><h3>Port ${p.port}/${esc(p.proto||'tcp')} · ${esc(p.service||'?')} <span class="muted">${esc(svc)}</span></h3>
-        ${p.cpe?`<div class="note">CPE: ${esc(p.cpe)}</div>`:''}
-        ${cves||'<div class="note">no CVEs mapped</div>'}</div>`;
+        return `<div class="cve">${cvssPill(c.cvss_score)}<a href="${c.url||'#'}" target="_blank">${esc(c.cve_id)}</a>${kev}${epss}</div>`;}).join('');
+      const svc=[p.product,p.version].filter(Boolean).join(' ')||p.service||'—';
+      return `<div style="padding:4px 0"><b>${p.port}</b>/${esc(p.service||'?')} <span class="muted">${esc(svc)}${p.category?' · '+esc(p.category):''}</span>${cves||''}</div>`;
     }).join('');
-  }catch(e){ $('sc-status').innerHTML='<span style="color:var(--crit)">request failed</span>'; }
+    return `<div class="rescard"><h3>${esc(h.ip||'host')} <span class="muted">${(h.categories||[]).map(esc).join(', ')}</span></h3>${ports||'<div class="note">no open ports</div>'}</div>`;
+  }).join('') || '<div class="note">No hosts responded.</div>';
+  html += `<div class="dlrow"><button class="btn primary" onclick="caStartInterview()">Generate compliance package →</button>
+    <span class="note" style="align-self:center">or stop here (scan only)</span></div>`;
+  into.innerHTML = html;
 }
 
 function renderCatalog(cat){
@@ -727,9 +727,15 @@ async function advisorInit(){ if(advReady) return; advReady=true;
   $('ca-send').onclick=caSend;
   $('ca-msg').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); caSend(); }});
   $('ca-generate').onclick=caGenerate;
+  $('sc-import-btn').onclick=importReport;
+  try{ const cat=await (await fetch('/scan/catalog')).json(); renderCatalog(cat); }catch(e){ if($('sc-catalog')) $('sc-catalog').textContent='catalog unavailable'; }
   caSetMode('scan'); caProviderChange(); caSetMethod('server');
 }
-function caSetMethod(m){ $('ca-servermethod').style.display=m==='server'?'block':'none'; $('ca-agentmethod').style.display=m==='agent'?'block':'none'; }
+function caSetMethod(m){
+  $('ca-servermethod').style.display=m==='server'?'block':'none';
+  $('ca-agentmethod').style.display=m==='agent'?'block':'none';
+  $('ca-importmethod').style.display=m==='import'?'block':'none';
+}
 async function caCreateAgentJob(){
   const target=$('ca-agent-target').value.trim()||'auto';
   $('ca-agent-out').innerHTML='<span class="spin"></span> creating job…';
@@ -749,9 +755,12 @@ async function caPollAgent(jobId, tries){
   if(tries>200){ const s=$('ca-agent-status'); if(s) s.innerHTML='timed out waiting for the agent.'; return; }
   try{ const s=await (await fetch('/agent/jobs/'+jobId)).json();
     if(s.status==='complete'){
-      caScan={scan_report:s.scan_report, recommendations:s.recommendations};
-      caCats=[]; (s.recommendations.hosts||[]).forEach(h=>(h.categories||[]).forEach(c=>{ if(!caCats.includes(c)) caCats.push(c); }));
-      const el=$('ca-agent-status'); if(el) el.innerHTML=`✓ results received — ${s.hosts_found} host(s), categories: ${caCats.map(esc).join(', ')||'none'}.<br><button class="btn primary" style="margin-top:8px" onclick="caStartInterview()">Start interview →</button>`;
+      const el=$('ca-agent-status'); if(el) el.innerHTML='✓ results received — analyzing (CVEs, KEV/EPSS, controls)…';
+      let a; try{ a=await (await fetch('/advisor/ingest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scan_report:s.scan_report})})).json(); }
+      catch(e){ a={hosts:[],recommendations:s.recommendations||{hosts:[]},categories:[],cve_total:0,kev_count:0}; }
+      caScan={scan_report:s.scan_report, recommendations:a.recommendations};
+      caCats=a.categories||[];
+      renderFindings(a, $('ca-agent-out'));
       return;
     }
   }catch(e){}
@@ -760,7 +769,7 @@ async function caPollAgent(jobId, tries){
 function caSetMode(m){ caMode=m;
   $('ca-scanbox').style.display = m==='scan'?'block':'none';
   $('ca-templatebox').style.display = m==='template'?'block':'none';
-  $('cst-1-lbl').textContent = m==='scan'?'Environment & scan':'Questionnaire';
+  $('cst-1-lbl').textContent = m==='scan'?'Scan & findings':'Questionnaire';
 }
 function caProviderChange(){
   const id=$('ca-provider').value; const p=caProviders.find(x=>x.id===id)||{implemented:true};
@@ -790,12 +799,9 @@ async function caScanRun(){
       body:JSON.stringify({provider, target, max_hosts:maxHosts, region:($('ca-region').value||'us-east-1')})});
     const d=await r.json();
     if(!r.ok){ $('ca-scanout').innerHTML='<span style="color:var(--crit)">'+esc(d.detail||'scan failed')+'</span>'; return; }
-    caScan=d; caCats=[]; (d.recommendations.hosts||[]).forEach(h=>(h.categories||[]).forEach(c=>{ if(!caCats.includes(c)) caCats.push(c); }));
-    const hosts=d.recommendations.hosts||[];
-    $('ca-scanout').innerHTML = `<div class="rescard"><h3>${hosts.length} asset(s) · categories: ${caCats.map(esc).join(', ')||'none'}</h3>`+
-      hosts.slice(0,25).map(h=>`<div class="note">${esc(h.ip)} — ${Object.keys(h.recommended_controls||{}).length} category mapping(s)</div>`).join('')+
-      (hosts.length?'':'<div class="note">No hosts responded — check the range and that hosts are reachable from the server.</div>')+
-      `</div><button class="btn primary" onclick="caStartInterview()">Start interview →</button>`;
+    caScan={scan_report:d.scan_report, recommendations:d.recommendations};
+    caCats=d.categories||[];
+    renderFindings(d, $('ca-scanout'));   // findings for the user to verify, then continue
   }catch(e){ $('ca-scanout').innerHTML='<span style="color:var(--crit)">request failed</span>'; }
 }
 let caSid=null, caFacts={};
