@@ -136,6 +136,13 @@
   .rescard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
   .rescard h3{margin:0 0 8px;font-size:14px}
   .cve{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:5px 0;border-top:1px solid var(--line);font-size:12px}
+  .st{padding:1px 7px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;white-space:nowrap}
+  .st.ready{background:rgba(46,204,113,.16);color:var(--ok)} .st.install{background:var(--pill);color:var(--muted)}
+  .kevchip{background:rgba(255,84,112,.22);color:var(--crit);padding:1px 6px;border-radius:20px;font-size:10px;font-weight:700}
+  .catgrp{margin:10px 0 3px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+  .catrow{display:flex;gap:8px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+  .catrow .en{color:var(--muted);font-size:11px}
+  .sev-info{background:var(--pill);color:var(--muted)}
   .qcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
   .qcard .q{font-weight:600;margin-bottom:8px}
   .qopt{display:flex;gap:8px;align-items:flex-start;padding:5px 0;font-size:13px;cursor:pointer}
@@ -243,6 +250,18 @@
       <button class="btn primary" id="sc-run" style="margin-left:8px">Scan</button></div>
     <div id="sc-status" class="note" style="margin-top:8px"></div>
     <div id="sc-results" style="margin-top:14px"></div>
+
+    <div class="sec">Import a scan report (Nessus · OpenVAS · nuclei)</div>
+    <p class="note" style="margin:0 0 8px">Already ran Nessus, OpenVAS/Greenbone, or nuclei? Upload its report — we normalize the findings, flag known-exploited (CISA KEV) and exploit-probability (EPSS), and rank by blended risk.</p>
+    <div class="form">
+      <input type="file" id="sc-import-file" accept=".nessus,.xml,.json,.jsonl,.txt" style="font-size:12px">
+      <button class="btn" id="sc-import-btn">Import &amp; enrich</button>
+    </div>
+    <div id="sc-import-out" style="margin-top:10px"></div>
+
+    <div class="sec">Scan-engine catalog</div>
+    <p class="note" style="margin:0 0 8px">All supported engines. <b>ready</b> = usable now; <b>install</b> = add the dependency to enable. SecureScan orchestrates these and ingests external scanners rather than replacing them.</p>
+    <div id="sc-catalog" class="note">loading…</div>
   </div>
 </div>
 
@@ -624,6 +643,8 @@ async function scanInit(){ if(scanReady) return; scanReady=true;
     $('sc-engines').textContent = `engines: ${d.engines.join(', ')} · default ${d.default}` + (d.authorization.allow_any?' · any-target enabled':' · private/LAN only');
   }catch(e){}
   $('sc-run').onclick = runScan;
+  $('sc-import-btn').onclick = importReport;
+  try{ const cat=await (await fetch('/scan/catalog')).json(); renderCatalog(cat); }catch(e){ $('sc-catalog').textContent='catalog unavailable'; }
   $('sc-detect').onclick = async()=>{
     $('sc-env').style.display='block'; $('sc-env').innerHTML='<span class="spin"></span> detecting…';
     try{ const e=await (await fetch('/advisor/environment')).json();
@@ -650,14 +671,42 @@ async function runScan(){
     if(!d.ports.length){ $('sc-results').innerHTML='<p class="note">No open ports found.</p>'; return; }
     $('sc-results').innerHTML = d.ports.map(p=>{
       const svc=[p.product,p.version].filter(Boolean).join(' ')||p.service||'—';
-      const cves=(p.cves||[]).map(c=>`<div class="cve">${cvssPill(c.cvss_score)}
-        <a href="${c.url||'#'}" target="_blank">${esc(c.cve_id)}</a>
-        <span class="muted" style="grid-column:1/-1">${esc(c.description||'')}</span></div>`).join('');
+      const cves=(p.cves||[]).map(c=>{
+        const kev=c.in_kev?' <span class="kevchip">KEV</span>':'';
+        const epss=(c.epss!=null)?` <span class="muted">EPSS ${(c.epss*100).toFixed(0)}%</span>`:'';
+        return `<div class="cve">${cvssPill(c.cvss_score)}
+        <a href="${c.url||'#'}" target="_blank">${esc(c.cve_id)}</a>${kev}${epss}
+        <span class="muted" style="grid-column:1/-1">${esc(c.description||'')}</span></div>`;}).join('');
       return `<div class="rescard"><h3>Port ${p.port}/${esc(p.proto||'tcp')} · ${esc(p.service||'?')} <span class="muted">${esc(svc)}</span></h3>
         ${p.cpe?`<div class="note">CPE: ${esc(p.cpe)}</div>`:''}
         ${cves||'<div class="note">no CVEs mapped</div>'}</div>`;
     }).join('');
   }catch(e){ $('sc-status').innerHTML='<span style="color:var(--crit)">request failed</span>'; }
+}
+
+function renderCatalog(cat){
+  $('sc-catalog').innerHTML = (cat.catalog||[]).map(g=>`<div class="catgrp">${esc(g.label)}</div>`+
+    g.engines.map(e=>`<div class="catrow"><span class="st ${esc(e.status)}">${esc(e.status)}</span>
+      <span><b>${esc(e.name)}</b> <span class="en">${esc(e.note||'')}${(e.status==='install'&&e.enable)?' · enable: '+esc(e.enable):''}</span></span></div>`).join('')
+  ).join('') + `<div class="note" style="margin-top:8px">${cat.summary.ready}/${cat.summary.total} ready · ${cat.summary.needs_install} need install</div>`;
+}
+async function importReport(){
+  const f=$('sc-import-file').files[0];
+  if(!f){ alert('Choose a report file (.nessus, OpenVAS .xml, or nuclei .json).'); return; }
+  $('sc-import-out').innerHTML='<span class="spin"></span> parsing &amp; enriching…';
+  let text; try{ text=await f.text(); }catch(e){ $('sc-import-out').textContent='could not read file'; return; }
+  try{
+    const r=await fetch('/scan/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:f.name,content:text})});
+    const d=await r.json();
+    if(!r.ok){ $('sc-import-out').innerHTML='<span style="color:var(--crit)">'+esc(d.detail||'import failed')+'</span>'; return; }
+    const rows=(d.findings||[]).slice(0,300).map(x=>`<tr><td><b>${x.risk??''}</b></td>
+      <td><span class="sevpill sev-${esc(x.severity||'info')}">${esc(x.severity||'')}</span></td>
+      <td>${esc(x.host||'')}</td><td class="muted">${esc((x.name||'').slice(0,72))}</td>
+      <td>${(x.cve_ids||[]).map(esc).join(', ')}${x.in_kev?' <span class="kevchip">KEV</span>':''}</td></tr>`).join('');
+    $('sc-import-out').innerHTML=`<div class="note">Parsed <b>${d.count}</b> finding(s) from <b>${esc(d.format)}</b> · ${d.cve_count} CVE(s) · <b>${d.kev_count}</b> known-exploited (KEV)</div>
+      <div style="overflow:auto;margin-top:8px"><table><thead><tr><th>Risk</th><th>Sev</th><th>Host</th><th>Finding</th><th>CVEs</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan=5 class="note">no findings</td></tr>'}</tbody></table></div>`;
+  }catch(e){ $('sc-import-out').innerHTML='<span style="color:var(--crit)">import failed</span>'; }
 }
 
 // ================= Compliance Advisor view =================
