@@ -128,20 +128,34 @@ def test_template_only_report_no_scan(client, tmp_path, monkeypatch):
     assert "hybrid" in b["environment_profile"]["summary"] and b["environment_profile"]["has_ot_ics"] is True
 
 
-def test_scan_maps_controls_and_authz(client, monkeypatch):
-    fake_scan = {"cidr": "127.0.0.1/32", "hosts_found": 1,
-                 "results": [{"ip": "127.0.0.1", "categories": ["web"]}]}
-    fake_rec = {"cidr": "127.0.0.1/32", "hosts": [
-        {"ip": "127.0.0.1", "categories": ["web"],
-         "recommended_controls": {"web": [{"control_id": "SC-7", "control_text": "x", "score": 0.8}]}}]}
-    monkeypatch.setattr(A.network_scan, "scan", lambda *a, **k: fake_scan)
-    monkeypatch.setattr(A.control_mapper, "recommend_for_scan", lambda sr, top_k=3: fake_rec)
+_FAKE_ANALYSIS = {"hosts": [{"ip": "127.0.0.1", "categories": ["web"], "ports": []}],
+                  "categories": ["web"], "cve_total": 0, "kev_count": 0, "host_max_risk": 0.0,
+                  "recommendations": {"cidr": None, "hosts": [
+                      {"ip": "127.0.0.1", "categories": ["web"],
+                       "recommended_controls": {"web": [{"control_id": "SC-7", "control_text": "x", "score": 0.8}]}}]}}
+
+
+def test_scan_uses_securescan_and_maps_controls(client, monkeypatch):
+    # /advisor/scan now runs SecureScan's engine then the shared analyzer (retired the duplicate scanner)
+    monkeypatch.setattr(A.sdiscovery, "scan_network",
+                        lambda *a, **k: {"cidr": None, "results": [{"ip": "127.0.0.1"}]})
+    monkeypatch.setattr(A.sanalyze, "analyze", lambda sr, **k: dict(_FAKE_ANALYSIS))
     r = client.post("/advisor/scan", json={"target": "127.0.0.1"})
     assert r.status_code == 200
-    assert r.json()["recommendations"]["hosts"][0]["ip"] == "127.0.0.1"
-    # a public target is refused before any scan happens
+    body = r.json()
+    assert body["recommendations"]["hosts"][0]["ip"] == "127.0.0.1"     # controls
+    assert "cve_total" in body and "hosts" in body                       # vulns view too
     monkeypatch.delenv("SCAN_ALLOW_ANY", raising=False)
     assert client.post("/advisor/scan", json={"target": "8.8.8.8"}).status_code == 403
+
+
+def test_advisor_ingest_securescan_output(client, monkeypatch):
+    # the Advisor can ingest a scan report produced elsewhere (SecureScan / agent) and analyze it
+    monkeypatch.setattr(A.sanalyze, "analyze", lambda sr, **k: dict(_FAKE_ANALYSIS))
+    r = client.post("/advisor/ingest", json={"scan_report": {"results": [{"ip": "127.0.0.1"}]}})
+    assert r.status_code == 200
+    b = r.json()
+    assert b["recommendations"]["hosts"][0]["ip"] == "127.0.0.1" and "categories" in b
 
 
 def test_report_generation_and_download(client, tmp_path, monkeypatch):
