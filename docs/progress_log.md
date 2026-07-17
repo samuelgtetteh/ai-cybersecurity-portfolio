@@ -4,6 +4,15 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-17 — RegMap shipped as a public model (GitHub Release + Hugging Face + GHCR)
+
+Packaged and PUBLISHED the fine-tuned RegMap embedder so anyone can use it out of the box:
+- GitHub Release: v0.1-regmap (regmap-embedder-release.zip = model + HIPAA corpus + inference wrapper + serve.py + Dockerfile).
+- Hugging Face: https://huggingface.co/stetteh/regmap-embedder (model + model card + corpus; verified model.safetensors 90MB present).
+- Docker/GHCR: ghcr.io/samuelgtetteh/regmap-embedder:0.1 and :latest — a serving image (FastAPI POST /map -> top-k HIPAA controls, 2.17GB, CPU torch). Verified locally (MFA control -> 164.312(d)). NOTE: GHCR packages are PRIVATE by default — make public + link to the repo in the package settings to show on the repo Packages tab.
+- Packaging source: packaging/regmap/ (LICENSE Apache-2.0, README model card with honest metrics — assistive top-k retriever recall@5~0.74, regmap_map.py, serve.py, Dockerfile, PUBLISHING.md); scripts/make_regmap_release.py builds dist/ (git-ignored).
+- Exhibits added/updated: 11A (RegMap reusable+published), 18 (Vulnerability-to-Compliance Assessment Tool), 19 (Integrated Security Platform), 15 refreshed.
+
 ## 2026-07-16 — Unify scan tools: one "Assess" workflow + Help page (retire standalone SecureScan)
 
 Retired the duplication (two scanners, two tabs). SecureScan's engine now feeds compliance mapping;

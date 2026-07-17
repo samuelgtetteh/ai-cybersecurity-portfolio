@@ -5,6 +5,9 @@
 #   docker run -p 8080:8080 ghcr.io/<owner>/regmap-embedder:0.1
 #   curl -s localhost:8080/map -H 'Content-Type: application/json' -d '{"control":"Enforce MFA for remote access."}'
 FROM python:3.11-slim
+LABEL org.opencontainers.image.source="https://github.com/samuelgtetteh/ai-cybersecurity-portfolio"
+LABEL org.opencontainers.image.description="RegMap — maps NIST SP 800-53 controls to HIPAA Security Rule provisions (POST /map)"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
 WORKDIR /app/model
 
 # CPU-only torch keeps the image lean, then the rest of the inference stack.
