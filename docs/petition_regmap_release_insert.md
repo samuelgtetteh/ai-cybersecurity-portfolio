@@ -1,13 +1,16 @@
-# RegMap public release — insert text for the NIW petition brief & personal statement
+# Public model releases — insert text for the NIW petition brief & personal statement
 
 The petition brief and personal statement are not in this repository. Below is ready-to-paste
-wording capturing that RegMap has been publicly released as an open, reusable model. All facts are
-accurate as of 2026-07-17. Cite **Exhibit 11A** (and Exhibit 18/19 for reuse) alongside.
+wording capturing that **all three models** have been publicly released as open, reusable,
+standalone systems. Accurate as of 2026-07-17. Cite **Exhibits 11A, 12A, 13A** (and 18/19 for reuse).
 
-**Verifiable public links:**
-- Hugging Face model: https://huggingface.co/stetteh/regmap-embedder
-- GitHub Release (bundle): https://github.com/samuelgtetteh/ai-cybersecurity-portfolio/releases/tag/v0.1-regmap
-- Docker image (serving API): `ghcr.io/samuelgtetteh/regmap-embedder`
+**Verifiable public links (all Apache-2.0):**
+
+| Model | Hugging Face | Docker (GHCR) | GitHub Release |
+|---|---|---|---|
+| RegMap (NIST→HIPAA mapping) | huggingface.co/stetteh/regmap-embedder | ghcr.io/samuelgtetteh/regmap-embedder | v0.1-regmap |
+| Hybrid Identity Anomaly Detector | huggingface.co/stetteh/identity-anomaly | ghcr.io/samuelgtetteh/identity-anomaly | v0.1-identity |
+| OT/ICS Intrusion Detector | huggingface.co/stetteh/otics-anomaly | ghcr.io/samuelgtetteh/otics-anomaly | v0.1-otics |
 
 ---
 
@@ -53,3 +56,27 @@ work useful.*
 > rigorous, AI-assisted compliance capability available to the people and institutions across the
 > United States who would otherwise go without it. Carrying my research all the way to a published,
 > reusable tool is exactly the kind of contribution I intend to keep making.
+
+---
+
+## C. Combined version — all three models (use for brief or statement)
+
+*Brief (third person):*
+> The petitioner has not confined his research to publications: he has released all three of his
+> models as open, standalone tools that any U.S. organization can use at no cost, each on the
+> Hugging Face model hub, as a downloadable release, and as a runnable Docker service under the
+> Apache-2.0 license — RegMap (NIST SP 800-53 → HIPAA compliance mapping), a hybrid-identity anomaly
+> detector (credential-compromise and insider-threat detection), and an OT/ICS intrusion detector
+> for critical-infrastructure sensor data (Exhibits 11A, 12A, 13A). The same models are reused as
+> components of his integrated security platform (Exhibits 18–19). Releasing and operationally
+> reusing his own research is direct evidence that the petitioner is well positioned to advance the
+> proposed endeavor and that the endeavor delivers concrete, openly disseminated benefits to the
+> United States — especially to under-resourced organizations that cannot afford commercial tools.
+
+*Personal statement (first person):*
+> I have released all three of my models — RegMap for compliance mapping, my identity anomaly
+> detector, and my OT/ICS intrusion detector — as free, open-source tools on Hugging Face,
+> as downloadable packages, and as ready-to-run Docker services. I did this because the
+> organizations that most need these capabilities — small clinics, utilities, and local agencies —
+> are often the least able to pay for them. Putting my work in the open, where anyone in the country
+> can use it, is how I intend to serve the national interest.

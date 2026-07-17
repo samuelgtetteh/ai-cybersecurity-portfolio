@@ -13,6 +13,14 @@ Three end-to-end machine learning prototypes covering compliance automation, ide
 | Hybrid Identity Anomaly Detection | LANL Auth Logs (2M events) | Isolation Forest | 17,399 anomalies flagged (0.87%) |
 | OT/ICS Intrusion Detection | HAI Turbine/Boiler Testbed (995K samples) | Deep Autoencoder | ROC AUC 0.929 (pooled) / 0.869 (session-disjoint) on 17,527 test attacks |
 
+**All three models are released as open, standalone systems (Apache-2.0):**
+
+| Model | Hugging Face | Docker (serving API) | GitHub Release |
+|---|---|---|---|
+| RegMap | [`stetteh/regmap-embedder`](https://huggingface.co/stetteh/regmap-embedder) | `ghcr.io/samuelgtetteh/regmap-embedder:0.1` | `v0.1-regmap` |
+| Identity Anomaly | [`stetteh/identity-anomaly`](https://huggingface.co/stetteh/identity-anomaly) | `ghcr.io/samuelgtetteh/identity-anomaly:0.1` | `v0.1-identity` |
+| OT/ICS Intrusion | [`stetteh/otics-anomaly`](https://huggingface.co/stetteh/otics-anomaly) | `ghcr.io/samuelgtetteh/otics-anomaly:0.1` | `v0.1-otics` |
+
 ---
 
 ## Projects
