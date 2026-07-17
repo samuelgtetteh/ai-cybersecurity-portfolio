@@ -28,6 +28,11 @@ A fine-tuned Sentence-BERT model that retrieves the correct HIPAA Security Rule 
 | Recall@3 | 0.559 |
 | Recall@5 | **0.735** |
 | MRR | 0.463 |
+
+**Released as an open model (Apache-2.0) — usable out of the box:**
+- 🤗 Hugging Face: [`stetteh/regmap-embedder`](https://huggingface.co/stetteh/regmap-embedder)
+- 🐳 Docker serving API: `docker run -p 8080:8080 ghcr.io/samuelgtetteh/regmap-embedder:0.1` → `POST /map`
+- 📦 GitHub Release: [`v0.1-regmap`](https://github.com/samuelgtetteh/ai-cybersecurity-portfolio/releases/tag/v0.1-regmap) (model + HIPAA corpus + inference wrapper)
 | Test queries | 34 (held-out) |
 | Corpus size | 60 HIPAA provisions |
 

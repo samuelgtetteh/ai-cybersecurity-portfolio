@@ -13,12 +13,12 @@ venv/Scripts/python.exe scripts/make_regmap_release.py
 ```bash
 pip install -U huggingface_hub
 huggingface-cli login                       # paste your HF write token
-huggingface-cli upload <your-username>/regmap-embedder dist/regmap-embedder . --repo-type model
+huggingface-cli upload stetteh/regmap-embedder dist/regmap-embedder . --repo-type model
 ```
 Then anyone can use it:
 ```python
 from sentence_transformers import SentenceTransformer
-m = SentenceTransformer("<your-username>/regmap-embedder")
+m = SentenceTransformer("stetteh/regmap-embedder")
 ```
 (The model card `README.md` renders automatically on the model page.)
 
@@ -36,14 +36,14 @@ python regmap_map.py "Enforce multi-factor authentication for remote access."
 ## Option C — Docker image (GHCR; shows under the repo's Packages tab)
 A model-serving image (`serve.py` → `POST /map`) built from the release folder:
 ```bash
-docker build -f packaging/regmap/Dockerfile -t ghcr.io/<owner>/regmap-embedder:0.1 dist/regmap-embedder
+docker build -f packaging/regmap/Dockerfile -t ghcr.io/samuelgtetteh/regmap-embedder:0.1 dist/regmap-embedder
 # login to GHCR with a token that has write:packages:
-gh auth token | docker login ghcr.io -u <owner> --password-stdin      # or a PAT
-docker push ghcr.io/<owner>/regmap-embedder:0.1
+gh auth token | docker login ghcr.io -u samuelgtetteh --password-stdin      # or a PAT
+docker push ghcr.io/samuelgtetteh/regmap-embedder:0.1
 ```
 Run it:
 ```bash
-docker run -p 8080:8080 ghcr.io/<owner>/regmap-embedder:0.1
+docker run -p 8080:8080 ghcr.io/samuelgtetteh/regmap-embedder:0.1
 curl -s localhost:8080/map -H 'Content-Type: application/json' -d '{"control":"Enforce MFA for remote access."}'
 ```
 If `gh auth token` lacks the scope, run `gh auth refresh -s write:packages` (or create a classic PAT
