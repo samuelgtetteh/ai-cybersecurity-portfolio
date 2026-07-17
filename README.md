@@ -21,6 +21,13 @@ Three end-to-end machine learning prototypes covering compliance automation, ide
 | Identity Anomaly | [`stetteh/identity-anomaly`](https://huggingface.co/stetteh/identity-anomaly) | `ghcr.io/samuelgtetteh/identity-anomaly:0.1` | `v0.1-identity` |
 | OT/ICS Intrusion | [`stetteh/otics-anomaly`](https://huggingface.co/stetteh/otics-anomaly) | `ghcr.io/samuelgtetteh/otics-anomaly:0.1` | `v0.1-otics` |
 
+**Testing infrastructure — disposable target labs that continuously validate the systems (Exhibit 20):**
+
+| Lab | Purpose | GitHub | Docker (GHCR) | Hugging Face |
+|---|---|---|---|---|
+| [live-target-lab](https://github.com/samuelgtetteh/live-target-lab) | streams synthetic identity + OT/ICS events (with ground-truth feedback) to the detectors | Release `v0.1` | `ghcr.io/samuelgtetteh/live-target-lab` | [dataset](https://huggingface.co/datasets/stetteh/live-target-lab-events) · [Space](https://huggingface.co/spaces/stetteh/live-target-lab) |
+| [cloud-target-lab](https://github.com/samuelgtetteh/cloud-target-lab) | LocalStack fake-AWS seeded with secure/insecure resources to test the cloud scanner | Release `v0.1` | `ghcr.io/samuelgtetteh/cloud-target-lab` | [dataset](https://huggingface.co/datasets/stetteh/cloud-target-lab-scenarios) · [Space](https://huggingface.co/spaces/stetteh/cloud-target-lab) |
+
 ---
 
 ## Projects
