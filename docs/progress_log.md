@@ -4,6 +4,14 @@ Dated entries of what changed each working session, so a new day can start by
 reading the latest entry instead of reconstructing context from scratch.
 Newest entry at the top.
 
+## 2026-07-17 — Identity + OT/ICS detectors shipped as standalone systems (like RegMap)
+
+Packaged and PUBLISHED the other two models the same way as RegMap (open, Apache-2.0, out-of-box):
+- Identity Anomaly Detector: HF stetteh/identity-anomaly · GitHub Release v0.1-identity · Docker ghcr.io/samuelgtetteh/identity-anomaly:0.1/:latest (serving POST /score). packaging/identity/ (identity_score.py 9-feat+rolling window, serve.py, card, Dockerfile) + scripts/make_identity_release.py. Verified: burst -> anomaly.
+- OT/ICS Intrusion Detector: HF stetteh/otics-anomaly · GitHub Release v0.1-otics · Docker ghcr.io/samuelgtetteh/otics-anomaly:0.1/:latest (serving POST /score, GET /example). packaging/otics/ (otics_score.py autoencoder+baseline, serve.py, card, Dockerfile) + scripts/make_otics_release.py. Verified: tampered reading -> anomaly.
+- Exhibits 12A (Identity) + 13A (OT/ICS) standalone-release addenda; README table of all 3 released models; petition insert expanded to all 3 (+combined paragraph).
+- All GHCR packages still PRIVATE by default — user to make public + link to repo (3 packages: regmap-embedder, identity-anomaly, otics-anomaly).
+
 ## 2026-07-17 — RegMap shipped as a public model (GitHub Release + Hugging Face + GHCR)
 
 Packaged and PUBLISHED the fine-tuned RegMap embedder so anyone can use it out of the box:
