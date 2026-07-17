@@ -24,6 +24,12 @@ control set onto HIPAA without manual, line-by-line mapping.
 - **Fine-tuning:** `MultipleNegativesRankingLoss` on curated NIST↔HIPAA control/provision pairs
 - **Task:** semantic retrieval (embed a control, cosine-rank against the HIPAA corpus, return top-k)
 
+## Where to get it
+- **Hugging Face:** `stetteh/regmap-embedder` — `SentenceTransformer("stetteh/regmap-embedder")`
+- **Docker (serving API):** `docker run -p 8080:8080 ghcr.io/samuelgtetteh/regmap-embedder:0.1`
+  then `POST /map {"control": "..."}` → top-k HIPAA provisions
+- **GitHub Release:** `v0.1-regmap` — a self-contained archive (model + corpus + wrapper)
+
 ## Intended use — an *assistive* retriever, not an authoritative classifier
 RegMap returns the **top-k most similar HIPAA provisions** for a human to review and confirm. It is
 designed to accelerate an expert's mapping work, not to make a final compliance determination on its

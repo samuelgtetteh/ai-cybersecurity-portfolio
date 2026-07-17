@@ -71,8 +71,18 @@ table(["Release element", "Detail"],
         "expert to confirm, not an authoritative single-answer classifier."],
        ["License", "Apache-2.0 (inherited from the base model), enabling free public and commercial "
         "use — reducing dependence on costly proprietary compliance tooling."],
-       ["Distribution", "Publishable to the Hugging Face Hub or as a self-contained release archive; "
-        "reproducible from the public repository via a release build script."]])
+       ["Distribution (published)", "Released publicly on the Hugging Face Hub "
+        "(huggingface.co/stetteh/regmap-embedder), as a downloadable GitHub Release "
+        "(v0.1-regmap), and as a runnable Docker image "
+        "(ghcr.io/samuelgtetteh/regmap-embedder) that serves the mapping over an API."]])
+doc.add_heading("2a. Public availability", level=1)
+para("RegMap is now publicly available for anyone to use immediately, through three channels:")
+bullet("Hugging Face Hub — https://huggingface.co/stetteh/regmap-embedder (load with one line of "
+       "sentence-transformers).")
+bullet("GitHub Release v0.1-regmap — a self-contained archive (model + HIPAA corpus + inference "
+       "wrapper) that runs offline.")
+bullet("Docker image — ghcr.io/samuelgtetteh/regmap-embedder:0.1, a serving container exposing a "
+       "POST /map endpoint that returns the top-ranked HIPAA provisions for a NIST control.")
 
 doc.add_heading("3. Reused as a component across the platform", level=1)
 para("RegMap is not a one-off: the same model now powers multiple capabilities of the operational "
