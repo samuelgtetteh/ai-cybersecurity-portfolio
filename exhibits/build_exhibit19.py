@@ -102,8 +102,10 @@ table(["National priority", "How the platform contributes"],
         "prescription), Detect (identity + OT anomaly detection), and Respond (decisioning + actions)."],
        ["DHS critical-infrastructure sectors", "Directly applicable to Healthcare & Public Health, "
         "Energy, Water, and Critical Manufacturing (OT/ICS)."],
-       ["Accessibility / cost", "Open-source and reuses published models, so state/local governments "
-        "and small organizations that cannot afford commercial suites can adopt it."]])
+       ["Accessibility / cost", "Open-source and reuses publicly released models — e.g. RegMap, "
+        "openly available on Hugging Face (huggingface.co/stetteh/regmap-embedder) and as a Docker "
+        "image (ghcr.io/samuelgtetteh/regmap-embedder) — so state/local governments and small "
+        "organizations that cannot afford commercial suites can adopt it."]])
 
 doc.add_heading("5. Significance for the National Interest", level=1)
 para("This exhibit shows the proposed endeavor is not theoretical: I have built a functioning, "

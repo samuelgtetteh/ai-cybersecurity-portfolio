@@ -104,7 +104,9 @@ bullet("backend/securescan/ — discovery engines, the shared analyzer (CVE mapp
        "service→control-category derivation), the engine catalog, and report importers.")
 bullet("backend/agent/agent.py — the self-contained on-prem scan agent.")
 bullet("backend/advisor_api.py — the unified scan → analyze → interview → report pipeline, reusing "
-       "the RegMap model for control mapping.")
+       "the RegMap model for control mapping. RegMap is itself publicly released — Hugging Face "
+       "(huggingface.co/stetteh/regmap-embedder) and Docker (ghcr.io/samuelgtetteh/regmap-embedder) "
+       "— so the control-mapping component is open and reproducible (see Exhibit 11A).")
 bullet("tests/ — automated tests for discovery, enrichment, importers, the agent job lifecycle, and "
        "the interview, served from the same reproducible Docker image as the detectors.")
 p = doc.add_paragraph(); p.add_run(REPO).bold = True
