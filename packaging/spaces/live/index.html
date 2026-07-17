@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Target Lab — synthetic event generator</title>
+<style>
+ body{font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif;margin:0;background:#0d1117;color:#e6edf6}
+ .wrap{max-width:960px;margin:0 auto;padding:28px 18px} h1{font-size:22px} a{color:#4da3ff}
+ .note{color:#8aa0bd;font-size:13px} .tabs{display:flex;gap:8px;margin:14px 0}
+ button{background:#1b2536;color:#e6edf6;border:1px solid #243044;border-radius:7px;padding:8px 13px;cursor:pointer}
+ button.p{background:#2563eb;border-color:#2563eb}
+ table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+ th,td{text-align:left;padding:6px 9px;border-bottom:1px solid #243044}
+ th{color:#8aa0bd;text-transform:uppercase;font-size:11px}
+ .mal{color:#ff5470;font-weight:600}.ben{color:#2ecc71}
+</style></head><body><div class="wrap">
+<h1>🛰️ Live Target Lab — synthetic event generator</h1>
+<p class="note">Preview the synthetic events the
+<a href="https://github.com/samuelgtetteh/live-target-lab">live-target-lab</a> streams to the
+detectors (~15% intentionally suspicious, labelled). The full lab runs as standing Docker services
+and reports ground-truth feedback. Models:
+<a href="https://huggingface.co/stetteh/identity-anomaly">identity-anomaly</a> ·
+<a href="https://huggingface.co/stetteh/otics-anomaly">otics-anomaly</a>.</p>
+<div class="tabs"><button class="p" onclick="genId()">Generate 20 identity events</button>
+<button onclick="genIcs()">Generate 20 OT/ICS readings</button></div>
+<div id="out"></div>
+<script>
+const rnd=a=>a[Math.floor(Math.random()*a)], g=()=>{let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);};
+const USERS=[...Array(40)].map((_,i)=>`U${1000+i}@DOM1`), PCS=[...Array(50)].map((_,i)=>`C${1000+i}`);
+const SUS=["ANONYMOUS LOGON@C9999","ANONYMOUS LOGON@C8123","guest@DOM1"];
+const AN=["NTLM","Kerberos","Negotiate"], AS=["TotallyUnrecognizedAuth","LegacyProtocolXYZ","UnverifiedCustomAuth"];
+const LN=["Network","Interactive","Service"], LS=["RemoteInteractive","NewCredentials"], OR=["LogOn","LogOff"];
+// representative subset of the 59 HAI tags: [baseline, std]
+const ICS={P1_FT01:[115.62,40],P1_TIT01:[35.80,3],P1_PIT01:[0.894,0.15],P1_LIT01:[395.0,25],P2_On:[1,0]};
+function tbl(cols,rows){return `<table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>i===r.length-1?`<td class="${c.includes('mal')?'mal':'ben'}">${c}</td>`:`<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`;}
+function genId(){let rows=[];for(let i=0;i<20;i++){if(Math.random()<0.15)rows.push([rnd(SUS),rnd(PCS),rnd(AS),rnd(LS),"Fail","malicious (suspicious)"]);else rows.push([rnd(USERS),rnd(PCS),rnd(AN),rnd(LN),"Success","benign"]);}document.getElementById("out").innerHTML=tbl(["user","pc","auth_type","logon_type","success","injected_label"],rows);}
+function genIcs(){let rows=[];for(let i=0;i<20;i++){let atk=Math.random()<0.15;let row=Object.entries(ICS).map(([k,[b,s]])=>(b+g()*s*0.5).toFixed(2));if(atk){let j=Math.floor(Math.random()*4);let[b,s]=Object.values(ICS)[j];row[j]=(b+ (Math.random()<.5?-1:1)*8*s).toFixed(2);}row.push(atk?"malicious (spike)":"benign");rows.push(row);}document.getElementById("out").innerHTML=tbl([...Object.keys(ICS),"injected_label"],rows);}
+genId();
+</script></div></body></html>

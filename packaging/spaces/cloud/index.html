@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cloud Target Lab — scenario catalog</title>
+<style>
+ body{font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif;margin:0;background:#0d1117;color:#e6edf6}
+ .wrap{max-width:920px;margin:0 auto;padding:28px 18px}
+ h1{font-size:22px} a{color:#4da3ff}
+ .note{color:#8aa0bd;font-size:13px}
+ table{width:100%;border-collapse:collapse;margin-top:16px;font-size:13.5px}
+ th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #243044}
+ th{color:#8aa0bd;text-transform:uppercase;font-size:11px;letter-spacing:.5px}
+ .secure{color:#2ecc71;font-weight:600}.insecure{color:#ff5470;font-weight:600}
+ code{background:#161b22;padding:1px 5px;border-radius:5px}
+</style></head><body><div class="wrap">
+<h1>☁️ Cloud Target Lab — seeded scenario catalog</h1>
+<p class="note"><a href="https://github.com/samuelgtetteh/cloud-target-lab">cloud-target-lab</a>
+stands up a LocalStack fake-AWS seeded with these mixed secure/insecure resources to test cloud
+security scanners. A static Space can't run LocalStack — run the lab locally
+(<code>docker compose up</code> then <code>python seed.py</code>) to stand up the live environment.</p>
+<table><thead><tr><th>Resource</th><th>Name</th><th>Configuration</th><th>Posture</th><th>Expected finding</th></tr></thead>
+<tbody id="rows"></tbody></table>
+<p class="note" style="margin-top:20px">Also available: dataset
+<a href="https://huggingface.co/datasets/stetteh/cloud-target-lab-scenarios">stetteh/cloud-target-lab-scenarios</a>
+· image <code>ghcr.io/samuelgtetteh/cloud-target-lab</code></p>
+<script>
+const R=[
+["s3_bucket","acme-internal-backups","private","secure","none"],
+["s3_bucket","acme-public-uploads","public-read","insecure","public S3 bucket"],
+["security_group","sg-insecure-ssh","SSH open to 0.0.0.0/0","insecure","unrestricted SSH ingress"],
+["security_group","sg-secure-web","HTTPS public, SSH restricted","secure","none"],
+["ec2_instance","legacy-jump-box","uses sg-insecure-ssh","insecure","exposed via insecure SG"],
+["ec2_instance","web-frontend","uses sg-secure-web","secure","none"],
+["iam_user","svc-legacy-app","inline policy Action:* Resource:*","insecure","admin-equivalent privileges"],
+["iam_user","alice-analyst","scoped read-only policy","secure","none"]];
+document.getElementById("rows").innerHTML=R.map(r=>`<tr><td>${r[0]}</td><td><b>${r[1]}</b></td><td>${r[2]}</td><td class="${r[3]}">${r[3]}</td><td>${r[4]}</td></tr>`).join("");
+</script></div></body></html>
