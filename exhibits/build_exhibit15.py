@@ -257,10 +257,24 @@ bullet("Most significantly, I have advanced all three efforts into original manu
        "now under peer review at established venues, submitting my work for external "
        "scientific scrutiny—the clearest available evidence of a genuine and continuing "
        "record of progress.")
+h("Continued Progress Since Submission: An Operational Platform", 1)
 para(
-    "This exhibit should be read alongside Exhibits 11–14, which document the "
-    "individual prototypes and their live validation in detail, and alongside my "
-    "publication record and personal statement.")
+    "Since submitting the three manuscripts, I have continued the endeavor by building the "
+    "prototypes into a single operational security platform, all publicly reproducible:")
+bullet("Real-time decisioning platform — the detectors now Record every decision, Decide via a "
+       "policy engine, Act with auditable responses, and produce AI-assisted triage (Exhibit 16).")
+bullet("Analyst case-management workflow — a human-in-the-loop console where resolving an alert "
+       "feeds ground truth back to improve future decisions (Exhibit 17).")
+bullet("Vulnerability-to-compliance assessment tool — one workflow from asset discovery and "
+       "exploit-aware vulnerability prioritization (CVE + CISA KEV + EPSS) to NIST SP 800-53 control "
+       "recommendations and reports, including an on-prem scan agent and ingestion of Nessus/OpenVAS "
+       "output (Exhibit 18).")
+bullet("RegMap released as a reusable, openly-licensed model and reused as a component across the "
+       "platform (Exhibit 11A).")
+para(
+    "This exhibit should be read alongside Exhibits 11–18, which document the "
+    "individual prototypes, their live validation, and their consolidation into an operational "
+    "platform, and alongside my publication record and personal statement.")
 
 para("")
 para("Date: " + AS_OF)
