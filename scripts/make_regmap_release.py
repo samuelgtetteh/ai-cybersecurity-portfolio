@@ -24,7 +24,8 @@ CORPUS_SRC = ROOT / "data" / "processed" / "labeled_pairs.csv"
 OUT = ROOT / "dist" / "regmap-embedder"
 ZIP = ROOT / "dist" / "regmap-embedder-release.zip"
 
-ASSET_FILES = ["LICENSE", "README.md", "regmap_map.py", "example.py", "requirements.txt"]
+ASSET_FILES = ["LICENSE", "README.md", "regmap_map.py", "example.py", "requirements.txt",
+               "serve.py", "Dockerfile"]
 
 
 def build():

@@ -33,6 +33,22 @@ python example.py
 python regmap_map.py "Enforce multi-factor authentication for remote access."
 ```
 
+## Option C — Docker image (GHCR; shows under the repo's Packages tab)
+A model-serving image (`serve.py` → `POST /map`) built from the release folder:
+```bash
+docker build -f packaging/regmap/Dockerfile -t ghcr.io/<owner>/regmap-embedder:0.1 dist/regmap-embedder
+# login to GHCR with a token that has write:packages:
+gh auth token | docker login ghcr.io -u <owner> --password-stdin      # or a PAT
+docker push ghcr.io/<owner>/regmap-embedder:0.1
+```
+Run it:
+```bash
+docker run -p 8080:8080 ghcr.io/<owner>/regmap-embedder:0.1
+curl -s localhost:8080/map -H 'Content-Type: application/json' -d '{"control":"Enforce MFA for remote access."}'
+```
+If `gh auth token` lacks the scope, run `gh auth refresh -s write:packages` (or create a classic PAT
+with `write:packages`) and `docker login ghcr.io` again.
+
 ## Notes
 - License: Apache-2.0 (matches the base model `all-MiniLM-L6-v2`).
 - `dist/` is git-ignored (the model already lives in `models/regmap-embedder`); the release is
