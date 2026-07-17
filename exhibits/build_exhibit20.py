@@ -77,7 +77,32 @@ table(["Lab", "GitHub", "Docker (GHCR)", "Hugging Face"],
         "ghcr.io/samuelgtetteh/cloud-target-lab", "dataset stetteh/cloud-target-lab-scenarios; "
         "Space stetteh/cloud-target-lab"]])
 
-doc.add_heading("5. Significance", level=1)
+doc.add_heading("5. Measured results from a continuous run", level=1)
+para("The labs are not merely demonstrable — they have been run continuously against the live "
+     "platform. In a representative run recorded July 2026, the platform and both event sources ran "
+     "for approximately 22 hours without interruption (restart-persistent containers), streaming "
+     "synthetic identity and OT/ICS events and reporting the injected ground-truth labels back. The "
+     "following are measured live from the platform's own trail (GET /decision/stats and "
+     "/decision/metrics) — not re-derived or estimated:")
+table(["Quantity", "Value"],
+      [["Continuous uptime", "~22 hours (backend + identity and OT/ICS event sources)"],
+       ["Labelled verdicts retained", "~100,000 — the trail reached its FIFO retention cap; ~100% "
+        "labelled automatically via the feedback loop"],
+       ["Volume by model", "identity: 66,228 labelled; OT/ICS: 33,787 labelled"],
+       ["Overall precision / recall / specificity", "0.996 / 0.998 / 0.997"],
+       ["Identity precision / recall / specificity", "1.000 / 0.998 / 1.000  (TP 42,098 · FP 0 · "
+        "FN 84 · TN 24,046)"],
+       ["OT/ICS precision / recall / specificity", "0.966 / 1.000 / 0.994  (TP 5,066 · FP 181 · "
+        "FN 0 · TN 28,540)"],
+       ["Response actions recorded", "52 (Act layer: log / ticket / webhook)"]])
+para("This one run validates several things simultaneously: the detectors' live accuracy against a "
+     "continuous, labelled stream at scale; the ground-truth feedback loop (which let these metrics "
+     "be computed directly from the database rather than tallied by hand, as in Exhibit 14); the FIFO "
+     "retention design (the trail held at its ~100,000-record cap over 22 hours instead of growing "
+     "without bound); and restart-persistence. It is the testing infrastructure demonstrating the "
+     "very properties it was built to verify.", italic=True)
+
+doc.add_heading("6. Significance", level=1)
 para("Purpose-built, continuously-running, ground-truth-labelled test harnesses — released openly "
      "alongside the systems they validate — demonstrate the engineering and scientific maturity to "
      "not only build security capabilities but to prove and reproduce their effectiveness. This "
