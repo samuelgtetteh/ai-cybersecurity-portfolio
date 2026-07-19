@@ -30,13 +30,15 @@ def scan_host(target: str, ports: Optional[List[int]] = None, engine: str = "aut
 
 
 def scan_network(target: str, engine: str = "auto", ports: Optional[List[int]] = None,
-                 timeout: float = 0.6, max_hosts: int = 256) -> dict:
+                 timeout: float = 0.6, max_hosts: int = 256, deep: bool = False) -> dict:
     """Discovery for a single host OR a CIDR range — the one engine that feeds both the
     vulnerability view and compliance mapping. Returns a raw scan_report (no CVEs yet;
     analyze.analyze() adds CVEs + KEV/EPSS + control mapping). Caller must authorize `target`.
 
     Single host -> uses the requested engine (nmap gives versions for good CVE lookups).
-    Range       -> threaded socket connect-scan across hosts (dependency-free, low-noise)."""
+    Range       -> threaded socket connect-scan for discovery. When `deep` is set AND nmap is
+                   available, each DISCOVERED host is then re-scanned with nmap on its open ports
+                   to add product/version/CPE — so a whole subnet yields CVEs, not just ports."""
     single = target
     try:
         net = ipaddress.ip_network(target, strict=False)
@@ -59,19 +61,36 @@ def scan_network(target: str, engine: str = "auto", ports: Optional[List[int]] =
     all_hosts = [str(h) for h in net.hosts()][:max_hosts]
     results = []
 
+    deep_ok = False
+    if deep:
+        try:
+            engines.get_engine("nmap")   # only deep-scan if nmap is actually available
+            deep_ok = True
+        except Exception:
+            deep_ok = False
+
     def _one(ip):
         hs = sock.scan(ip, ip=ip, ports=ports, timeout=timeout, banner=False)
-        if hs.up and hs.ports:
-            return {"ip": ip, "open_ports": [p.port for p in hs.ports],
-                    "services": [{"port": p.port, "service": p.service} for p in hs.ports]}
-        return None
+        if not (hs.up and hs.ports):
+            return None
+        found = [p.port for p in hs.ports]
+        if deep_ok:
+            try:  # re-scan just the discovered ports with nmap for versions/CPE
+                dh = scan_host(ip, ports=found, engine="nmap", timeout=max(timeout, 1.0))
+                return {"ip": ip, "open_ports": [p.port for p in dh.ports],
+                        "services": [{"port": p.port, "service": p.service, "product": p.product,
+                                      "version": p.version, "cpe": p.cpe} for p in dh.ports]}
+            except Exception:
+                pass   # fall back to the socket-level result for this host
+        return {"ip": ip, "open_ports": found,
+                "services": [{"port": p.port, "service": p.service} for p in hs.ports]}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=64) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=(12 if deep_ok else 64)) as ex:
         for r in ex.map(_one, all_hosts):
             if r:
                 results.append(r)
-    return {"cidr": str(net), "engine": "socket", "hosts_scanned": len(all_hosts),
-            "hosts_found": len(results), "results": results}
+    return {"cidr": str(net), "engine": "nmap" if deep_ok else "socket", "deep": deep_ok,
+            "hosts_scanned": len(all_hosts), "hosts_found": len(results), "results": results}
 
 
 def enrich_with_cves(hostscan, max_per_service: int = 5, use_cache: bool = True) -> dict:

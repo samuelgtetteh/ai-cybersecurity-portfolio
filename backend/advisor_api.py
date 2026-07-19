@@ -225,6 +225,7 @@ class AdvisorScan(BaseModel):
     top_k: int = Field(3, ge=1, le=10, description="controls per discovered category")
     timeout: float = Field(0.5, gt=0, le=5)
     max_hosts: int = Field(256, ge=1, le=4096)
+    deep: bool = Field(False, description="deep scan: nmap-fingerprint each discovered host for versions + CVEs")
 
 
 @router.post("/scan")
@@ -240,7 +241,8 @@ def advisor_scan(req: AdvisorScan):
         _authorize(target)
         try:  # SecureScan's engine is now the single discovery source
             scan_report = sdiscovery.scan_network(target, engine="auto",
-                                                   timeout=req.timeout, max_hosts=req.max_hosts)
+                                                   timeout=req.timeout, max_hosts=req.max_hosts,
+                                                   deep=req.deep)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
@@ -282,6 +284,29 @@ def advisor_ingest(body: IngestReq):
     how SecureScan's output feeds compliance mapping."""
     _require_available()
     return _analyze(body.scan_report)
+
+
+class ScanExportReq(BaseModel):
+    analysis: dict = Field(..., description="the /advisor/scan or /advisor/ingest response to export")
+    label: str = Field("scan_findings", description="download file-name base")
+
+
+@router.post("/scan/export")
+def scan_export(body: ScanExportReq):
+    """Write the SCAN FINDINGS to DOCX / XLSX / JSON and return download links. Independent of the
+    compliance package — this is the raw technical assessment, downloadable on its own."""
+    from securescan import scan_report_export as sre
+    report_id = uuid.uuid4().hex[:12]
+    outdir = REPORTS_DIR / report_id
+    outdir.mkdir(parents=True, exist_ok=True)
+    try:
+        files = sre.build_all(str(outdir), body.analysis or {})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"scan export failed: {e}")
+    label = (body.label or "scan_findings").strip() or "scan_findings"
+    _REPORTS[report_id] = {"dir": str(outdir), "files": files, "business_name": label,
+                           "filename_base": label}
+    return {"report_id": report_id, "files": files, "download_base": f"/advisor/report/{report_id}/"}
 
 
 # ------------------------------------------------------------------ interview (adaptive form)
@@ -664,7 +689,8 @@ def download_report(report_id: str, fmt: str):
     path = Path(rec["dir"]) / rec["files"][fmt]
     if not path.exists():
         raise HTTPException(status_code=404, detail="file missing")
-    fname = f"{rec['business_name']}_compliance_report.{fmt}".replace(" ", "_")
+    base = rec.get("filename_base") or f"{rec['business_name']}_compliance_report"
+    fname = f"{base}.{fmt}".replace(" ", "_")
     return FileResponse(str(path), media_type=_MEDIA.get(fmt, "application/octet-stream"),
                         filename=fname)
 

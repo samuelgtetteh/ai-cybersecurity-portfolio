@@ -235,6 +235,65 @@
 <!-- SecureScan tool -->
 <!-- Assess: unified scan -> findings(verify) -> interview -> compliance report -->
 <div id="view-assess" class="view">
+  <style>
+  :root{--sc:#ff5470;--sh:#ff9d45;--sm:#e7b008;--sl:#2ecc71}
+  :root[data-theme="light"]{--sc:#d92d4b;--sh:#c25a0e;--sm:#9a7508;--sl:#17a34a}
+  .ac-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:16px 0}
+  @media(max-width:820px){.ac-stats{grid-template-columns:repeat(2,1fr)}}
+  .ac-stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 14px;cursor:pointer;transition:.15s;position:relative;overflow:hidden}
+  .ac-stat:hover{border-color:var(--accent);transform:translateY(-2px)}
+  .ac-stat .l{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+  .ac-stat .v{font-size:26px;font-weight:800;margin-top:6px;font-variant-numeric:tabular-nums}
+  .ac-stat.alert .v{color:var(--crit)}
+  .ac-stat .go{position:absolute;right:12px;bottom:9px;color:var(--muted);font-size:12px;opacity:0;transition:.15s}
+  .ac-stat:hover .go{opacity:1}
+  .ac-tabs{display:flex;gap:20px;border-bottom:1px solid var(--line);margin-top:6px;overflow-x:auto}
+  .ac-tab{background:none;border:0;color:var(--muted);padding:9px 2px 11px;border-bottom:2px solid transparent;margin-bottom:-1px;cursor:pointer;font-size:13.5px;display:flex;gap:8px;align-items:center;white-space:nowrap}
+  .ac-tab.on{color:var(--txt);border-bottom-color:var(--accent);font-weight:600}
+  .ac-tab .pill{background:var(--pill);border-radius:6px;padding:1px 7px;font-size:11px;color:var(--muted)}
+  .ac-tab.on .pill{color:var(--accent)}
+  .ac-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 0}
+  .ac-search{flex:1;min-width:160px;display:flex;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 11px}
+  .ac-search input{all:unset;flex:1;color:var(--txt);font-size:13px}
+  .ac-chip{background:var(--pill);border:1px solid var(--line);color:var(--muted);border-radius:20px;padding:4px 11px;font-size:11px;cursor:pointer}
+  .ac-chip.on{color:var(--txt);border-color:var(--accent)}
+  .ac-chip.kev.on{color:#fff;background:var(--crit);border-color:transparent}
+  .ac-table{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .ac-tw{overflow-x:auto}
+  .ac-r{display:grid;grid-template-columns:var(--cols);gap:12px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);min-width:820px}
+  .ac-r:last-child{border-bottom:0}
+  .ac-r.h{background:var(--panel2)} .ac-r.h span{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+  .ac-r.row{cursor:pointer} .ac-r.row:hover{background:var(--panel2)}
+  .ac-cell{min-width:0}
+  .ac-mono{font-family:ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .ac-vpr{display:inline-flex;gap:6px;align-items:center;font-weight:700;font-family:ui-monospace,monospace;cursor:help}
+  .ac-shield{width:15px;height:17px;flex:none;clip-path:polygon(50% 0,100% 22%,100% 62%,50% 100%,0 62%,0 22%)}
+  .ac-tat{display:flex;gap:9px;align-items:center}.ac-tatbar{flex:1;min-width:54px;height:6px;border-radius:4px;background:var(--pill);overflow:hidden}.ac-tatbar i{display:block;height:100%;background:var(--sm)}
+  .ac-sev{display:inline-flex;gap:6px;align-items:center;font-size:12.5px}.ac-sd{width:14px;height:14px;border-radius:4px;flex:none}
+  .ac-kev{background:var(--crit);color:#fff;font-size:9.5px;font-weight:700;border-radius:5px;padding:2px 6px;cursor:pointer}
+  .ac-cat{background:var(--pill);border:1px solid var(--line);color:var(--muted);font-size:10px;border-radius:6px;padding:2px 7px;cursor:pointer}
+  .ac-cat:hover{border-color:var(--accent);color:var(--accent)}
+  .ac-see{color:var(--accent);cursor:pointer;font-size:12.5px}
+  .ac-actions{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0;align-items:center}
+  .ac-exp{background:var(--pill);border:1px solid var(--line);border-radius:9px;padding:9px 13px;cursor:pointer;color:var(--txt);font-size:12.5px}
+  .ac-exp:hover{border-color:var(--accent)}
+  .ac-empty{padding:26px;text-align:center;color:var(--muted)}
+  .ac-guide{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:10px 14px;margin:14px 0;font-size:12.5px;color:var(--muted);flex-wrap:wrap}
+  .ac-guide b{color:var(--txt)} .ac-guide .k{color:var(--accent);cursor:pointer} .ac-guide .x{margin-left:auto;cursor:pointer;color:var(--muted);background:none;border:0;font-size:15px}
+  #ac-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:.2s;z-index:60}
+  #ac-ov.show{opacity:1;pointer-events:auto}
+  #ac-drawer{position:fixed;top:0;right:0;height:100%;width:min(480px,96vw);background:var(--panel);border-left:1px solid var(--line);transform:translateX(100%);transition:transform .28s cubic-bezier(.2,.9,.25,1);z-index:61;display:flex;flex-direction:column}
+  #ac-drawer.show{transform:none}
+  #ac-drawer .dh{padding:16px;border-bottom:1px solid var(--line);background:var(--panel2);display:flex;gap:10px;align-items:center}
+  #ac-drawer .dh .x{margin-left:auto;background:none;border:0;color:var(--muted);font-size:22px;cursor:pointer;line-height:1}
+  #ac-drawer .db{padding:16px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:18px}
+  #ac-drawer h5{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+  #ac-drawer ol{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:9px;font-size:13px}
+  #ac-drawer .ref{display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:10px;text-decoration:none;color:var(--txt);font-size:13px;margin-bottom:7px}
+  #ac-drawer .ref:hover{border-color:var(--accent)} #ac-drawer .ref .e{margin-left:auto;color:var(--muted);font-size:11px}
+  #ac-drawer .df{padding:14px 16px;border-top:1px solid var(--line);display:flex;gap:9px;flex-wrap:wrap}
+  #ac-drawer .bd{background:var(--panel2);border-radius:9px;padding:10px 12px;font-size:12.5px;color:var(--muted)}#ac-drawer .bd b{color:var(--txt)}
+  </style>
   <div class="page">
     <h2>Assess — scan → findings → compliance</h2>
     <p class="lead">One workflow: discover assets (or import a scan / use an agent), review the findings — CVEs with KEV/EPSS risk — then optionally continue to a short interview and generate NIST SP 800-53 controls + downloadable reports. <span id="ca-llm" class="note"></span></p>
@@ -273,7 +332,8 @@
           </div>
           <div id="ca-provider-note" class="note" style="margin:6px 0"></div>
           <div class="note" style="margin:4px 0">Scanning a public/WAN IP checks that address's <b>internet-facing perimeter</b> — it can't see devices inside a home/office LAN behind NAT (use an agent for that).</div>
-          <div class="ackrow"><input type="checkbox" id="ca-ack"><label for="ca-ack">I am authorized to scan this target.</label></div>
+          <div class="ackrow" style="gap:18px;flex-wrap:wrap"><span><input type="checkbox" id="ca-ack"><label for="ca-ack"> I am authorized to scan this target.</label></span>
+            <span><input type="checkbox" id="ca-deep" checked><label for="ca-deep"> Deep scan (nmap versions + CVEs on discovered hosts)</label></span></div>
           <button class="btn primary" id="ca-scan">Scan &amp; map controls</button>
           <div id="ca-scanout" style="margin-top:12px"></div>
         </div>
@@ -665,24 +725,137 @@ function cvssPill(s){ if(s==null) return '<span class="sevpill sev-low">n/a</spa
 
 // Render the unified analysis (findings = ports+CVEs+KEV/EPSS + mapped control categories) for
 // the user to VERIFY, with the CTA to continue to the compliance interview.
-function renderFindings(a, into){
-  const hosts=a.hosts||[]; const recs=(a.recommendations&&a.recommendations.hosts)||[];
-  let html=`<div class="note" style="margin-bottom:8px">Found <b>${hosts.length}</b> host(s) · <b>${a.cve_total||0}</b> CVE(s) · <b>${a.kev_count||0}</b> known-exploited (KEV) · categories: ${(a.categories||[]).map(esc).join(', ')||'—'}</div>`;
-  html += hosts.map(h=>{
-    const ports=(h.ports||[]).map(p=>{
-      const cves=(p.cves||[]).map(c=>{
-        const kev=c.in_kev?' <span class="kevchip">KEV</span>':'';
-        const epss=(c.epss!=null)?` <span class="muted">EPSS ${(c.epss*100).toFixed(0)}%</span>`:'';
-        return `<div class="cve">${cvssPill(c.cvss_score)}<a href="${c.url||'#'}" target="_blank">${esc(c.cve_id)}</a>${kev}${epss}</div>`;}).join('');
-      const svc=[p.product,p.version].filter(Boolean).join(' ')||p.service||'—';
-      return `<div style="padding:4px 0"><b>${p.port}</b>/${esc(p.service||'?')} <span class="muted">${esc(svc)}${p.category?' · '+esc(p.category):''}</span>${cves||''}</div>`;
-    }).join('');
-    return `<div class="rescard"><h3>${esc(h.ip||'host')} <span class="muted">${(h.categories||[]).map(esc).join(', ')}</span></h3>${ports||'<div class="note">no open ports</div>'}</div>`;
-  }).join('') || '<div class="note">No hosts responded.</div>';
-  html += `<div class="dlrow"><button class="btn primary" onclick="caStartInterview()">Generate compliance package →</button>
-    <span class="note" style="align-self:center">or stop here (scan only)</span></div>`;
-  into.innerHTML = html;
+// ============ Assess console — clickable tabs / stats / drill-downs + remediation drawer ============
+let acA=null, acInto=null, acTab='weaknesses', acSev=new Set(), acKev=false, acQuery='', acOpen=new Set(), acGuide=true;
+const acSEVc=v=>v>=9?'crit':v>=7?'high':v>=4?'med':v>0?'low':'info';
+const acLBL={crit:'Critical',high:'High',med:'Medium',low:'Low',info:'Info'};
+const acCOL=s=>({crit:'var(--sc)',high:'var(--sh)',med:'var(--sm)',low:'var(--sl)',info:'var(--muted)'})[s];
+const acCTRL={remote_access:['AC-17','Remote Access'],web:['SC-7','Boundary Protection'],file_share:['AC-3','Access Enforcement'],database:['SC-28','Protection at Rest'],windows:['SI-2','Flaw Remediation'],network_service:['SC-7','Boundary Protection'],media:['CM-7','Least Functionality'],print:['CM-7','Least Functionality'],directory:['IA-2','Identification & Auth'],email:['SC-8','Transmission Confidentiality']};
+const acRiskOf=c=>{ if(c.risk!=null) return Math.round(c.risk*10)/10; let r=c.cvss_score||0; if(c.in_kev)r=Math.max(r,9); if(c.epss)r=Math.min(10,r+c.epss*1.2); return Math.round(r*10)/10; };
+const acTech=c=>Math.max(1,Math.round((c.epss||.05)*11)+(c.in_kev?4:1));
+function acWeak(){ const m=new Map(); (acA.hosts||[]).forEach(h=>(h.ports||[]).forEach(p=>(p.cves||[]).forEach(c=>{
+  let w=m.get(c.cve_id); if(!w){const cat=p.category||''; w={id:c.cve_id,cvss:c.cvss_score||0,kev:!!c.in_kev,epss:c.epss||0,risk:acRiskOf(c),url:c.url,desc:c.summary||c.description||'',cat,service:p.service||'',ctrl:acCTRL[cat]||['CM-7','Least Functionality'],assets:new Set(),products:new Set(),tech:acTech(c)}; m.set(c.cve_id,w);}
+  w.assets.add(h.ip); const pn=[p.product,p.version].filter(Boolean).join(' '); if(pn)w.products.add(pn); }))); return [...m.values()]; }
+function acFind(){ const o=[]; (acA.hosts||[]).forEach(h=>(h.ports||[]).forEach(p=>(p.cves||[]).forEach(c=>o.push({ip:h.ip,svc:p.port+'/'+(p.service||''),cve:c,cat:p.category||'',risk:acRiskOf(c),tech:acTech(c)})))); return o; }
+function acSoft(){ const m=new Map(); (acA.hosts||[]).forEach(h=>(h.ports||[]).forEach(p=>{const n=[p.product,p.version].filter(Boolean).join(' '); if(!n)return; let s=m.get(n); if(!s){s={prod:n,svc:p.service||'',hosts:new Set(),cves:0};m.set(n,s);} s.hosts.add(h.ip); s.cves+=(p.cves||[]).length;})); return [...m.values()]; }
+const acWById=id=>acWeak().find(w=>w.id===id);
+const acMatchSev=s=>!acSev.size||acSev.has(s);
+const acHit=s=>!acQuery||String(s).toLowerCase().includes(acQuery.toLowerCase());
+function acHostRisk(h){ let m=0; (h.ports||[]).forEach(p=>(p.cves||[]).forEach(c=>m=Math.max(m,acRiskOf(c)))); return m; }
+
+function renderFindings(a,into){ acA=a; acInto=into; acTab='weaknesses'; acSev=new Set(); acKev=false; acQuery=''; acOpen=new Set(); acGuide=true; acEnsureDrawer(); acRender(); }
+
+function acVpr(sev,score){ return `<span class="ac-vpr" title="Transparent priority: CVSS, escalated by KEV, weighted by EPSS"><span class="ac-shield" style="background:${acCOL(sev)}"></span>${score.toFixed(1)}</span>`; }
+function acSevPill(sev){ return `<span class="ac-sev"><span class="ac-sd" style="background:${acCOL(sev)}"></span>${acLBL[sev]}</span>`; }
+function acTat(n){ return `<span class="ac-tat"><span class="ac-tatbar"><i style="width:${Math.min(100,n/12*100)}%"></i></span><span class="ac-mono">${n}</span></span>`; }
+const AC_COLS={assets:'1.3fr 1fr 70px 130px 130px',weaknesses:'96px 1.5fr 92px 168px 120px 1.3fr 110px',findings:'120px 130px 150px 92px 168px 1fr',software:'1.5fr 130px 70px 70px'};
+const AC_HEAD={assets:['Asset','Categories','Ports','Exposure','Severity'],weaknesses:['','Weakness','Priority','Top attack technique','Severity','Description','Action'],findings:['Asset','Service','Weakness','Priority','Top attack technique','Description'],software:['Product','Service','Hosts','CVEs']};
+
+function acRender(){
+  const hosts=acA.hosts||[]; const W=acWeak(), F=acFind(), S=acSoft();
+  const svc=hosts.reduce((n,h)=>n+(h.ports||[]).length,0), kev=W.filter(w=>w.kev).length, maxr=W.reduce((m,w)=>Math.max(m,w.risk),0);
+  const cnt={assets:hosts.length,weaknesses:W.length,findings:F.length,software:S.length};
+  const stat=(l,v,goto,alert)=>`<div class="ac-stat ${alert?'alert':''}" data-act="stat" data-goto="${goto}"><div class="l">${l}</div><div class="v">${v}</div><div class="go">view ›</div></div>`;
+  let html=`<div class="ac-stats">${stat('Assets',hosts.length,'assets')}${stat('Open services',svc,'assets')}${stat('Weaknesses',W.length,'weaknesses')}${stat('Known exploited (KEV)',kev,'kev',kev>0)}${stat('Max priority',maxr.toFixed(1),'weaknesses',maxr>=9)}</div>`;
+  if(acGuide) html+=`<div class="ac-guide">💡 <span><b>What you can do next:</b> click any <span class="k" data-act="tab" data-tab="weaknesses">number</span>, CVE, host or product to drill in · <b>⚑ Resolve</b> shows fix steps &amp; the NIST control · then <b>Download findings</b> or <b>Send to Compliance →</b> when you're ready.</span><button class="x" data-act="guidex" title="dismiss">✕</button></div>`;
+  html+=`<div class="ac-tabs">`+['assets','weaknesses','findings','software'].map(t=>`<button class="ac-tab ${acTab===t?'on':''}" data-act="tab" data-tab="${t}">${t[0].toUpperCase()+t.slice(1)} <span class="pill">${cnt[t]}</span></button>`).join('')+`</div>`;
+  html+=`<div class="ac-tools"><span class="ac-search">⌕ <input id="ac-q" placeholder="Search CVE, host, service, product…" value="${esc(acQuery)}"></span>`
+    +['crit','high','med','low'].map(s=>`<span class="ac-chip ${acSev.has(s)?'on':''}" data-act="sev" data-sev="${s}">${acLBL[s]}</span>`).join('')
+    +`<span class="ac-chip kev ${acKev?'on':''}" data-act="kevf">KEV only</span></div>`;
+  html+=`<div class="ac-table"><div class="ac-tw" id="ac-rows"></div></div>`;
+  html+=`<div class="ac-actions"><span class="muted">Download findings:</span>
+    <button class="ac-exp" data-act="export" data-fmt="xlsx">⇩ XLSX</button><button class="ac-exp" data-act="export" data-fmt="docx">⇩ DOCX</button><button class="ac-exp" data-act="export" data-fmt="json">⇩ JSON</button>
+    <span style="flex:1"></span><button class="btn primary" data-act="compliance">Send to Compliance →</button></div>`;
+  acInto.innerHTML=html; acInto.onclick=acClick;
+  const q=$('ac-q'); if(q){ q.oninput=e=>{acQuery=e.target.value; acRenderRows();}; }
+  acRenderRows();
 }
+function acRenderRows(){
+  const box=$('ac-rows'); if(!box)return; box.innerHTML='';
+  const cols=AC_COLS[acTab]; const head=document.createElement('div'); head.className='ac-r h'; head.style.setProperty('--cols',cols);
+  head.innerHTML=AC_HEAD[acTab].map(h=>`<span class="ac-cell">${h}</span>`).join(''); box.appendChild(head);
+  let rows=[];
+  if(acTab==='assets'){ rows=(acA.hosts||[]).filter(h=>h.ip&&(acHit(h.ip)||acHit((h.categories||[]).join(' ')))); rows.sort((a,b)=>acHostRisk(b)-acHostRisk(a)); rows.forEach(h=>acRowAsset(box,h)); }
+  else if(acTab==='weaknesses'){ rows=acWeak().filter(w=>acMatchSev(acSEVc(w.risk))&&(!acKev||w.kev)&&(acHit(w.id)||acHit(w.desc)||acHit([...w.products].join(' ')))); rows.sort((a,b)=>b.risk-a.risk); rows.forEach(w=>acRowWeak(box,w)); }
+  else if(acTab==='findings'){ rows=acFind().filter(f=>acMatchSev(acSEVc(f.risk))&&(!acKev||f.cve.in_kev)&&(acHit(f.ip)||acHit(f.cve.cve_id)||acHit(f.svc))); rows.sort((a,b)=>b.risk-a.risk); rows.forEach(f=>acRowFind(box,f)); }
+  else { rows=acSoft().filter(s=>acHit(s.prod)||acHit(s.svc)); rows.sort((a,b)=>b.cves-a.cves||b.hosts.size-a.hosts.size); rows.forEach(s=>acRowSoft(box,s)); }
+  if(!rows.length) box.appendChild(Object.assign(document.createElement('div'),{className:'ac-empty',textContent:'No rows match these filters.'}));
+}
+function acMk(cols){ const r=document.createElement('div'); r.className='ac-r row'; r.style.setProperty('--cols',cols); return r; }
+function acRowWeak(box,w){ const sev=acSEVc(w.risk); const r=acMk(AC_COLS.weaknesses);
+  r.innerHTML=`<div class="ac-cell"><span class="ac-see" data-act="fix" data-cve="${esc(w.id)}">⚑ Resolve</span></div>
+    <div class="ac-cell"><div class="ac-mono" style="font-weight:600"><span class="ac-see" data-act="fix" data-cve="${esc(w.id)}">${esc(w.id)}</span> ${w.kev?'<span class="ac-kev" data-act="kevf">KEV</span>':''}</div><div class="muted" style="font-size:12px">${esc([...w.products][0]||w.service)}</div></div>
+    <div class="ac-cell">${acVpr(sev,w.risk)}</div><div class="ac-cell">${acTat(w.tech)}</div><div class="ac-cell">${acSevPill(sev)}</div>
+    <div class="ac-cell muted" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(w.desc||'—')}</div>
+    <div class="ac-cell"><span class="ac-see" data-act="fix" data-cve="${esc(w.id)}">See details ›</span></div>`;
+  box.appendChild(r); }
+function acRowFind(box,f){ const sev=acSEVc(f.risk); const r=acMk(AC_COLS.findings);
+  r.innerHTML=`<div class="ac-cell"><span class="ac-see" data-act="asset" data-ip="${esc(f.ip)}">${esc(f.ip)}</span></div>
+    <div class="ac-cell ac-mono muted">${esc(f.svc)}</div>
+    <div class="ac-cell"><span class="ac-see ac-mono" data-act="fix" data-cve="${esc(f.cve.cve_id)}">${esc(f.cve.cve_id)}</span> ${f.cve.in_kev?'<span class="ac-kev" data-act="kevf">KEV</span>':''}</div>
+    <div class="ac-cell">${acVpr(sev,f.risk)}</div><div class="ac-cell">${acTat(f.tech)}</div>
+    <div class="ac-cell muted" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.cve.summary||f.cve.description||'')}</div>`;
+  box.appendChild(r); }
+function acRowSoft(box,s){ const r=acMk(AC_COLS.software);
+  r.innerHTML=`<div class="ac-cell ac-mono" style="font-weight:600"><span class="ac-see" data-act="prod" data-prod="${esc(s.prod)}">${esc(s.prod)}</span></div>
+    <div class="ac-cell ac-mono muted">${esc(s.svc)}</div><div class="ac-cell ac-mono">${s.hosts.size}</div><div class="ac-cell ac-mono">${s.cves||'—'}</div>`;
+  box.appendChild(r); }
+function acRowAsset(box,h){ const open=acOpen.has(h.ip); const mr=acHostRisk(h); const sev=acSEVc(mr);
+  const kev=(h.ports||[]).some(p=>(p.cves||[]).some(c=>c.in_kev)); const r=acMk(AC_COLS.assets); r.dataset.act='asset'; r.dataset.ip=h.ip;
+  r.innerHTML=`<div class="ac-cell ac-mono" style="font-weight:600">${esc(h.ip)}</div>
+    <div class="ac-cell">${(h.categories||[]).map(c=>`<span class="ac-cat" data-act="cat" data-cat="${esc(c)}">${esc(c)}</span>`).join(' ')}</div>
+    <div class="ac-cell ac-mono">${(h.ports||[]).length}</div>
+    <div class="ac-cell"><span class="ac-tatbar" style="max-width:130px"><i style="width:${mr*10}%;background:${acCOL(sev)}"></i></span></div>
+    <div class="ac-cell">${acSevPill(sev)} ${kev?'<span class="ac-kev" data-act="kevf">KEV</span>':''}</div>`;
+  box.appendChild(r);
+  if(open){ const d=document.createElement('div'); d.className='ac-r'; d.style.setProperty('--cols','1fr'); d.style.minWidth='0'; d.style.background='var(--panel2)';
+    d.innerHTML='<div class="ac-cell">'+(h.ports||[]).map(p=>{const cv=(p.cves||[]).map(c=>{const s=acSEVc(acRiskOf(c));return `<div style="display:flex;gap:9px;align-items:center;margin:3px 0;flex-wrap:wrap"><span class="ac-see ac-mono" data-act="fix" data-cve="${esc(c.cve_id)}">${esc(c.cve_id)}</span>${acVpr(s,acRiskOf(c))}${c.in_kev?'<span class="ac-kev" data-act="kevf">KEV</span>':''}<span class="muted" style="flex:1;font-size:12px">${esc(c.summary||c.description||'')}</span></div>`;}).join('')||'<span class="muted">no known CVEs</span>';
+      return `<div style="display:grid;grid-template-columns:150px 1fr;gap:12px;padding:8px 4px;border-top:1px solid var(--line)"><div class="ac-mono"><b>${p.port}</b>/${esc(p.service||'')}<div class="muted" style="font-size:12px">${esc([p.product,p.version].filter(Boolean).join(' '))}</div></div><div>${cv}</div></div>`;}).join('')+'</div>';
+    box.appendChild(d); } }
+function acGotoAsset(ip){ acCloseFix(); acTab='assets'; acOpen=new Set([ip]); acRender(); }
+function acClick(e){ const t=e.target.closest('[data-act]'); if(!t)return; const a=t.dataset.act;
+  if(a==='tab'){ acTab=t.dataset.tab; acRender(); }
+  else if(a==='stat'){ const g=t.dataset.goto; if(g==='kev'){acTab='weaknesses';acKev=true;} else {acTab=g;} acRender(); }
+  else if(a==='sev'){ const s=t.dataset.sev; acSev.has(s)?acSev.delete(s):acSev.add(s); acRender(); }
+  else if(a==='kevf'){ e.stopPropagation(); acKev=!acKev; if(acTab!=='weaknesses'&&acTab!=='findings')acTab='weaknesses'; acRender(); }
+  else if(a==='fix'){ e.stopPropagation(); acOpenFix(t.dataset.cve); }
+  else if(a==='asset'){ e.stopPropagation(); const ip=t.dataset.ip; if(acTab!=='assets'){acTab='assets';acOpen=new Set([ip]);acRender();} else {acOpen.has(ip)?acOpen.delete(ip):acOpen.add(ip);acRenderRows();} }
+  else if(a==='prod'){ e.stopPropagation(); acTab='software'; acQuery=t.dataset.prod; acRender(); }
+  else if(a==='cat'){ e.stopPropagation(); acTab='findings'; acQuery=t.dataset.cat; acRender(); }
+  else if(a==='export'){ acExport(t.dataset.fmt); }
+  else if(a==='compliance'){ caStartInterview(); }
+  else if(a==='guidex'){ acGuide=false; acRender(); }
+}
+function acEnsureDrawer(){ if($('ac-drawer'))return; const ov=document.createElement('div'); ov.id='ac-ov'; ov.onclick=acCloseFix; document.body.appendChild(ov); const d=document.createElement('aside'); d.id='ac-drawer'; document.body.appendChild(d); }
+function acFixSteps(w){ const s=[]; const prod=[...w.products][0]||('the '+(w.service||'affected')+' service');
+  if(w.kev)s.push("Treat as urgent — this CVE is in CISA's Known Exploited Vulnerabilities catalog; it is being exploited in the wild now.");
+  s.push('Patch or upgrade <b>'+esc(prod)+'</b> to a vendor release that fixes '+esc(w.id)+'.');
+  const c=w.cat;
+  if(c==='remote_access')s.push('Until patched, restrict this service to a management VPN and require MFA.');
+  else if(c==='web')s.push('Put it behind a reverse proxy / WAF, disable unused modules, enforce TLS.');
+  else if(c==='file_share')s.push('Limit shares to hosts that need them, disable SMBv1, enforce signing.');
+  else if(c==='database')s.push('Bind the database to trusted subnets and use least-privilege accounts.');
+  else if(c==='windows')s.push('Apply the latest monthly security rollup and enable automatic updates.');
+  else if(c==='media'||c==='print')s.push('Move the device onto an isolated VLAN with no inbound internet exposure.');
+  else s.push('Reduce exposure — firewall the port to only the hosts that require it.');
+  s.push('Re-scan the host to confirm the version no longer matches '+esc(w.id)+'.');
+  s.push('The fix and evidence map to NIST <b>'+w.ctrl[0]+'</b> and flow into your compliance package.');
+  return s; }
+function acOpenFix(id){ const w=acWById(id); if(!w)return; const sev=acSEVc(w.risk);
+  const refs=[['NVD — detail, CVSS vector & fixes','https://nvd.nist.gov/vuln/detail/'+id,'nvd.nist.gov ↗'],['CISA Known Exploited catalog','https://www.cisa.gov/known-exploited-vulnerabilities-catalog','cisa.gov ↗'],['Vendor advisory & patch','https://www.google.com/search?q='+encodeURIComponent(id+' patch advisory'),'search ↗']];
+  $('ac-drawer').innerHTML=`<div class="dh"><div><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">Remediation</div><div class="ac-mono" style="font-size:17px;font-weight:700;margin-top:3px">${esc(id)}</div></div>${acVpr(sev,w.risk)}<button class="x" onclick="acCloseFix()">✕</button></div>
+    <div class="db">
+      <div><p style="margin:0;color:var(--muted)">${esc(w.desc||'')}</p><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">${w.kev?'<span class="ac-kev">● Actively exploited (KEV)</span>':''}<span class="ac-cat">EPSS ${Math.round(w.epss*100)}%</span><span class="ac-cat">${w.assets.size} affected</span></div></div>
+      <div><h5>Recommended remediation</h5><ol>${acFixSteps(w).map(x=>'<li>'+x+'</li>').join('')}</ol></div>
+      <div><h5>Priority breakdown</h5><div class="bd">Priority <b>${w.risk.toFixed(1)}</b> = CVSS <b>${(w.cvss||0).toFixed(1)}</b>${w.kev?' · <b>KEV</b> escalates to ≥9.0':''} · EPSS <b>${Math.round(w.epss*100)}%</b>. Transparent — no black box.</div></div>
+      <div><h5>Affected assets</h5><div>${[...w.assets].map(ip=>`<span class="ac-cat" onclick="acGotoAsset('${ip}')">${esc(ip)}</span>`).join(' ')}</div></div>
+      <div><h5>Maps to control</h5><span class="ac-mono" style="color:var(--accent)"><b>${w.ctrl[0]}</b> ${w.ctrl[1]}</span></div>
+      <div><h5>References &amp; patch sources</h5>${refs.map(r=>`<a class="ref" href="${r[1]}" target="_blank" rel="noopener">${r[0]}<span class="e">${r[2]}</span></a>`).join('')}</div>
+    </div>
+    <div class="df"><button class="btn primary" onclick="acCloseFix()">✓ Acknowledge</button><button class="btn" onclick="acCloseFix();caStartInterview()">Send to Compliance →</button></div>`;
+  $('ac-ov').classList.add('show'); $('ac-drawer').classList.add('show'); }
+function acCloseFix(){ const d=$('ac-drawer'),o=$('ac-ov'); if(d)d.classList.remove('show'); if(o)o.classList.remove('show'); }
+async function acExport(fmt){ try{ const r=await fetch('/advisor/scan/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({analysis:acA,label:'scan_findings'})}); const j=await r.json(); if(!r.ok){alert(j.detail||'export failed');return;} window.open(j.download_base+fmt,'_blank'); }catch(e){ alert('export failed'); } }
 
 function renderCatalog(cat){
   $('sc-catalog').innerHTML = (cat.catalog||[]).map(g=>`<div class="catgrp">${esc(g.label)}</div>`+
@@ -796,7 +969,7 @@ async function caScanRun(){
   $('ca-scanout').innerHTML='<span class="spin"></span> scanning &amp; mapping controls…';
   try{
     const r=await fetch('/advisor/scan',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({provider, target, max_hosts:maxHosts, region:($('ca-region').value||'us-east-1')})});
+      body:JSON.stringify({provider, target, max_hosts:maxHosts, deep:($('ca-deep')?$('ca-deep').checked:false), region:($('ca-region').value||'us-east-1')})});
     const d=await r.json();
     if(!r.ok){ $('ca-scanout').innerHTML='<span style="color:var(--crit)">'+esc(d.detail||'scan failed')+'</span>'; return; }
     caScan={scan_report:d.scan_report, recommendations:d.recommendations};

@@ -51,3 +51,8 @@ docs/logs/*
 # Scientific paper draft — kept local, not published to GitHub
 paper/
 dist/
+
+# python virtualenvs anywhere
+.venv/
+standalone/.venv/
+standalone/app/
