@@ -1,0 +1,73 @@
+{
+  "captured_at": "2026-07-17 15:34 UTC",
+  "uptime": [
+    "RedMap: Up 22 hours",
+    "ics-event-source: Up 22 hours",
+    "identity-event-source: Up 22 hours"
+  ],
+  "stats": {
+    "verdicts": 100089,
+    "flagged": 47340,
+    "labeled": 100085,
+    "audited_requests": 100011,
+    "by_model": {
+      "ics": {
+        "count": 33826,
+        "flagged": 5253
+      },
+      "identity": {
+        "count": 66261,
+        "flagged": 42087
+      },
+      "scan": {
+        "count": 2,
+        "flagged": 0
+      }
+    },
+    "retention": {
+      "max_verdicts": 100000,
+      "max_requests": 100000,
+      "max_actions": 50000,
+      "trim_every": 100
+    },
+    "db_path": "/verdicts/verdicts.db"
+  },
+  "metrics": {
+    "all": {
+      "model": "all",
+      "labeled": 100085,
+      "tp": 47157,
+      "fp": 182,
+      "fn": 84,
+      "tn": 52662,
+      "precision": 0.9962,
+      "recall": 0.9982,
+      "specificity": 0.9966,
+      "accuracy": 0.9973
+    },
+    "identity": {
+      "model": "identity",
+      "labeled": 66260,
+      "tp": 42086,
+      "fp": 0,
+      "fn": 84,
+      "tn": 24090,
+      "precision": 1.0,
+      "recall": 0.998,
+      "specificity": 1.0,
+      "accuracy": 0.9987
+    },
+    "ics": {
+      "model": "ics",
+      "labeled": 33828,
+      "tp": 5071,
+      "fp": 182,
+      "fn": 0,
+      "tn": 28575,
+      "precision": 0.9654,
+      "recall": 1.0,
+      "specificity": 0.9937,
+      "accuracy": 0.9946
+    }
+  }
+}
