@@ -816,7 +816,8 @@ function acRenderRows(){
   else if(acTab==='weaknesses'){ rows=acWeak().filter(w=>acMatchSev(acSEVc(w.risk))&&(!acKev||w.kev)&&(acHit(w.id)||acHit(w.desc)||acHit([...w.products].join(' ')))); rows.sort((a,b)=>b.risk-a.risk); rows.forEach(w=>acRowWeak(box,w)); }
   else if(acTab==='findings'){ rows=acFind().filter(f=>acMatchSev(acSEVc(f.risk))&&(!acKev||f.cve.in_kev)&&(acHit(f.ip)||acHit(f.cve.cve_id)||acHit(f.svc))); rows.sort((a,b)=>b.risk-a.risk); rows.forEach(f=>acRowFind(box,f)); }
   else { rows=acSoft().filter(s=>acHit(s.prod)||acHit(s.svc)); rows.sort((a,b)=>b.cves-a.cves||b.hosts.size-a.hosts.size); rows.forEach(s=>acRowSoft(box,s)); }
-  if(!rows.length) box.appendChild(Object.assign(document.createElement('div'),{className:'ac-empty',textContent:'No rows match these filters.'}));
+  if(!rows.length){ const hasData=(acA.hosts||[]).length>0;
+    box.appendChild(Object.assign(document.createElement('div'),{className:'ac-empty',innerHTML: hasData?'No rows match these filters.':'▲ Run a scan above — the console fills with assets, weaknesses, findings and software.'})); }
 }
 function acMk(cols){ const r=document.createElement('div'); r.className='ac-r row'; r.style.setProperty('--cols',cols); return r; }
 function acRowWeak(box,w){ const sev=acSEVc(w.risk); const r=acMk(AC_COLS.weaknesses);
@@ -941,6 +942,8 @@ async function advisorInit(){ if(advReady) return; advReady=true;
   $('sc-import-btn').onclick=importReport;
   try{ const cat=await (await fetch('/scan/catalog')).json(); renderCatalog(cat); }catch(e){ if($('sc-catalog')) $('sc-catalog').textContent='catalog unavailable'; }
   caSetMode('scan'); caProviderChange(); caSetMethod('server');
+  // show the console layout immediately (empty state) so Assess looks like the console on open
+  if(!acA) renderFindings({hosts:[],cve_total:0,kev_count:0,categories:[]}, $('ca-scanout'));
 }
 function caSetMethod(m){
   $('ca-servermethod').style.display=m==='server'?'block':'none';
