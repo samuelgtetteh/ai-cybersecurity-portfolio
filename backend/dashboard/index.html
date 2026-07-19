@@ -293,6 +293,34 @@
   #ac-drawer .ref:hover{border-color:var(--accent)} #ac-drawer .ref .e{margin-left:auto;color:var(--muted);font-size:11px}
   #ac-drawer .df{padding:14px 16px;border-top:1px solid var(--line);display:flex;gap:9px;flex-wrap:wrap}
   #ac-drawer .bd{background:var(--panel2);border-radius:9px;padding:10px 12px;font-size:12.5px;color:var(--muted)}#ac-drawer .bd b{color:var(--txt)}
+  /* --- Tenable Inventory layout (the approved design) --- */
+  .ac-tabs{gap:26px;margin-top:6px}
+  .ac-tab{font-size:14.5px;padding:9px 2px 12px;border-bottom-width:3px}
+  .ac-stats{display:flex;gap:48px;margin:20px 2px;flex-wrap:wrap}
+  .ac-stat{background:none;border:0;border-radius:0;padding:0;overflow:visible;cursor:pointer;transition:color .15s}
+  .ac-stat:hover{transform:none;border-color:transparent}
+  .ac-stat .l{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+  .ac-stat .v{font-size:31px;font-weight:800;margin-top:8px;color:var(--txt);line-height:1}
+  .ac-stat.alert .v{color:var(--crit)} .ac-stat:hover .v{color:var(--accent)}
+  .ac-frow{display:flex;gap:10px;align-items:center;margin:8px 2px 16px;flex-wrap:wrap}
+  .ac-dd{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:10px 14px;color:var(--txt);font-size:13px;white-space:nowrap}
+  .ac-frow .ac-search{flex:1}
+  .ac-ic{width:40px;height:40px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;font-size:15px}
+  .ac-ic:hover{color:var(--accent);border-color:var(--accent)}
+  .ac-body2{display:grid;grid-template-columns:236px 1fr;gap:16px;align-items:start}
+  @media(max-width:820px){.ac-body2{grid-template-columns:1fr}}
+  .ac-filters{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+  .ac-fhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .ac-fhead b{font-size:14px} .ac-reset{background:none;border:0;color:var(--accent);cursor:pointer;font-size:12px}
+  .ac-fsearch{display:flex;gap:8px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin-bottom:6px;color:var(--muted)}
+  .ac-fsearch input{all:unset;flex:1;color:var(--txt);font-size:12.5px}
+  .ac-fsub{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:13px 2px 5px}
+  .ac-srcitem{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:8px;cursor:pointer}
+  .ac-srcitem:hover{background:var(--panel2)} .ac-srcitem.on{background:color-mix(in srgb,var(--accent) 15%,transparent)}
+  .ac-srcitem .nm{flex:1;font-size:13px} .ac-srcitem.on .nm{color:var(--accent);font-weight:600}
+  .ac-srcitem .pc{font-family:ui-monospace,monospace;font-size:12px;color:var(--muted)} .ac-srcitem.on .pc{color:var(--accent)}
+  .ac-srcitem .ac-sd{width:13px;height:13px;border-radius:3px}
+  .ac-dls{display:flex;gap:6px;flex-wrap:wrap}
   </style>
   <div class="page">
     <h2>Assess — scan → findings → compliance</h2>
@@ -755,19 +783,28 @@ function acRender(){
   const hosts=acA.hosts||[]; const W=acWeak(), F=acFind(), S=acSoft();
   const svc=hosts.reduce((n,h)=>n+(h.ports||[]).length,0), kev=W.filter(w=>w.kev).length, maxr=W.reduce((m,w)=>Math.max(m,w.risk),0);
   const cnt={assets:hosts.length,weaknesses:W.length,findings:F.length,software:S.length};
-  const stat=(l,v,goto,alert)=>`<div class="ac-stat ${alert?'alert':''}" data-act="stat" data-goto="${goto}"><div class="l">${l}</div><div class="v">${v}</div><div class="go">view ›</div></div>`;
-  let html=`<div class="ac-stats">${stat('Assets',hosts.length,'assets')}${stat('Open services',svc,'assets')}${stat('Weaknesses',W.length,'weaknesses')}${stat('Known exploited (KEV)',kev,'kev',kev>0)}${stat('Max priority',maxr.toFixed(1),'weaknesses',maxr>=9)}</div>`;
-  if(acGuide) html+=`<div class="ac-guide">💡 <span><b>What you can do next:</b> click any <span class="k" data-act="tab" data-tab="weaknesses">number</span>, CVE, host or product to drill in · <b>⚑ Resolve</b> shows fix steps &amp; the NIST control · then <b>Download findings</b> or <b>Send to Compliance →</b> when you're ready.</span><button class="x" data-act="guidex" title="dismiss">✕</button></div>`;
-  html+=`<div class="ac-tabs">`+['assets','weaknesses','findings','software'].map(t=>`<button class="ac-tab ${acTab===t?'on':''}" data-act="tab" data-tab="${t}">${t[0].toUpperCase()+t.slice(1)} <span class="pill">${cnt[t]}</span></button>`).join('')+`</div>`;
-  html+=`<div class="ac-tools"><span class="ac-search">⌕ <input id="ac-q" placeholder="Search CVE, host, service, product…" value="${esc(acQuery)}"></span>`
-    +['crit','high','med','low'].map(s=>`<span class="ac-chip ${acSev.has(s)?'on':''}" data-act="sev" data-sev="${s}">${acLBL[s]}</span>`).join('')
-    +`<span class="ac-chip kev ${acKev?'on':''}" data-act="kevf">KEV only</span></div>`;
-  html+=`<div class="ac-table"><div class="ac-tw" id="ac-rows"></div></div>`;
-  html+=`<div class="ac-actions"><span class="muted">Download findings:</span>
-    <button class="ac-exp" data-act="export" data-fmt="xlsx">⇩ XLSX</button><button class="ac-exp" data-act="export" data-fmt="docx">⇩ DOCX</button><button class="ac-exp" data-act="export" data-fmt="json">⇩ JSON</button>
-    <span style="flex:1"></span><button class="btn primary" data-act="compliance">Send to Compliance →</button></div>`;
+  const sc={crit:0,high:0,med:0,low:0}; W.forEach(w=>{const s=acSEVc(w.risk); if(sc[s]!=null)sc[s]++;});
+  const cats={}; W.forEach(w=>{ if(w.cat) cats[w.cat]=(cats[w.cat]||0)+1; });
+  const tab=t=>`<button class="ac-tab ${acTab===t?'on':''}" data-act="tab" data-tab="${t}">${t[0].toUpperCase()+t.slice(1)} <span class="pill">${cnt[t]}</span></button>`;
+  const stat=(l,v,goto,alert)=>`<div class="ac-stat ${alert?'alert':''}" data-act="stat" data-goto="${goto}"><div class="l">${l}</div><div class="v">${v}</div></div>`;
+  const sevItem=k=>`<div class="ac-srcitem ${acSev.has(k)?'on':''}" data-act="sev" data-sev="${k}"><span class="ac-sd" style="background:${acCOL(k)}"></span><span class="nm">${acLBL[k]}</span><span class="pc">${sc[k]||0}</span></div>`;
+  const catItem=c=>`<div class="ac-srcitem ${acQuery===c?'on':''}" data-act="cat" data-cat="${esc(c)}"><span class="nm">${esc(c)}</span><span class="pc">${cats[c]}</span></div>`;
+  let html=`<div class="ac-tabs">${['assets','weaknesses','findings','software'].map(tab).join('')}</div>`;
+  html+=`<div class="ac-stats">${stat('Number of weaknesses',W.length,'weaknesses')}${stat('Assets',hosts.length,'assets')}${stat('Open services',svc,'assets')}${stat('Known exploited (KEV)',kev,'kev',kev>0)}${stat('Max priority',maxr.toFixed(1),'weaknesses',maxr>=9)}</div>`;
+  if(acGuide) html+=`<div class="ac-guide">💡 <span><b>What you can do next:</b> click any number, CVE, host or product to drill in · <b>⚑ Resolve</b> shows fix steps &amp; the NIST control · then <b>Download</b> or <b>Send to Compliance →</b>.</span><button class="x" data-act="guidex" title="dismiss">✕</button></div>`;
+  html+=`<div class="ac-frow"><span class="ac-dd">All weakness types ▾</span><span class="ac-search">⌕ <input id="ac-q" placeholder="Search for a weakness name, CVE, asset or product…" value="${esc(acQuery)}"></span><button class="ac-ic" data-act="export" data-fmt="xlsx" title="Export findings">⇪</button><button class="btn primary" data-act="compliance">Send to Compliance →</button></div>`;
+  html+=`<div class="ac-body2"><aside class="ac-filters">
+      <div class="ac-fhead"><b>Filters</b><button class="ac-reset" data-act="reset">Reset filters</button></div>
+      <div class="ac-fsearch">⌕ <input id="ac-fq" placeholder="Search" value="${esc(acQuery)}"></div>
+      <div class="ac-fsub">Severity</div>${['crit','high','med','low'].map(sevItem).join('')}
+      <div class="ac-fsub">Exploit</div><div class="ac-srcitem kev ${acKev?'on':''}" data-act="kevf"><span class="nm">Known exploited (KEV)</span><span class="pc">${kev}</span></div>
+      ${Object.keys(cats).length?`<div class="ac-fsub">Category</div>${Object.keys(cats).sort().map(catItem).join('')}`:''}
+      <div class="ac-fsub">Download findings</div><div class="ac-dls"><button class="ac-exp" data-act="export" data-fmt="xlsx">XLSX</button><button class="ac-exp" data-act="export" data-fmt="docx">DOCX</button><button class="ac-exp" data-act="export" data-fmt="json">JSON</button></div>
+    </aside>
+    <section class="ac-table"><div class="ac-tw" id="ac-rows"></div></section></div>`;
   acInto.innerHTML=html; acInto.onclick=acClick;
-  const q=$('ac-q'); if(q){ q.oninput=e=>{acQuery=e.target.value; acRenderRows();}; }
+  const q=$('ac-q'); if(q) q.oninput=e=>{acQuery=e.target.value; const f=$('ac-fq'); if(f)f.value=e.target.value; acRenderRows();};
+  const fq=$('ac-fq'); if(fq) fq.oninput=e=>{acQuery=e.target.value; const g=$('ac-q'); if(g)g.value=e.target.value; acRenderRows();};
   acRenderRows();
 }
 function acRenderRows(){
@@ -825,6 +862,7 @@ function acClick(e){ const t=e.target.closest('[data-act]'); if(!t)return; const
   else if(a==='export'){ acExport(t.dataset.fmt); }
   else if(a==='compliance'){ caStartInterview(); }
   else if(a==='guidex'){ acGuide=false; acRender(); }
+  else if(a==='reset'){ acSev=new Set(); acKev=false; acQuery=''; acRender(); }
 }
 function acEnsureDrawer(){ if($('ac-drawer'))return; const ov=document.createElement('div'); ov.id='ac-ov'; ov.onclick=acCloseFix; document.body.appendChild(ov); const d=document.createElement('aside'); d.id='ac-drawer'; document.body.appendChild(d); }
 function acFixSteps(w){ const s=[]; const prod=[...w.products][0]||('the '+(w.service||'affected')+' service');

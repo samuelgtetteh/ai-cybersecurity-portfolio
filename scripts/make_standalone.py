@@ -43,8 +43,13 @@ def copy_dir(src_rel, dst):
 
 def main():
     if os.path.exists(OUT):
-        print("removing existing %s" % OUT)
-        shutil.rmtree(OUT)
+        print("clearing existing %s" % OUT)   # clear CONTENTS (keep the root — it may be open in Explorer)
+        for name in os.listdir(OUT):
+            p = os.path.join(OUT, name)
+            try:
+                shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
+            except Exception:
+                print("  (skipping locked: %s)" % name)
     os.makedirs(APP, exist_ok=True)
     print("building standalone in: %s" % OUT)
 
